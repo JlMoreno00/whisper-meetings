@@ -176,7 +176,7 @@ class TestFullPipelineSchemaValidation:
 
         # Values from mock / pipeline constants
         assert meta["language"] == "es"
-        assert meta["model"] == "mlx-community/whisper-large-v3-mlx"
+        assert meta["model"] == "mlx-community/whisper-large-v3-turbo"
         assert meta["file_size_bytes"] == 15_234_567
         assert meta["duration_seconds"] == pytest.approx(3600.5)
 

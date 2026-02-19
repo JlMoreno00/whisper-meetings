@@ -134,7 +134,7 @@ def test_map_metadata_populated():
     assert m.duration_seconds == 3600.5
     assert m.transcription_time_seconds == 245.3
     assert m.language == "es"
-    assert m.model == "mlx-community/whisper-large-v3-mlx"
+    assert m.model == "mlx-community/whisper-large-v3-turbo"
     # created_at must be ISO 8601 ending with "Z"
     assert m.created_at.endswith("Z"), f"created_at must end with Z: {m.created_at}"
     assert "T" in m.created_at, f"created_at must be ISO format: {m.created_at}"

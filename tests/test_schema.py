@@ -85,7 +85,7 @@ class TestMetadata:
             file_size_bytes=1000,
             duration_seconds=10.0,
             language="es",
-            model="mlx-community/whisper-large-v3-mlx",
+            model="mlx-community/whisper-large-v3-turbo",
             transcription_time_seconds=5.0,
             created_at="2026-01-01T00:00:00Z",
         )
@@ -93,7 +93,7 @@ class TestMetadata:
         assert metadata.file_size_bytes == 1000
         assert metadata.duration_seconds == 10.0
         assert metadata.language == "es"
-        assert metadata.model == "mlx-community/whisper-large-v3-mlx"
+        assert metadata.model == "mlx-community/whisper-large-v3-turbo"
         assert metadata.transcription_time_seconds == 5.0
         assert metadata.created_at == "2026-01-01T00:00:00Z"
 
@@ -108,7 +108,7 @@ class TestTranscriptionResult:
             file_size_bytes=1000,
             duration_seconds=10.0,
             language="es",
-            model="mlx-community/whisper-large-v3-mlx",
+            model="mlx-community/whisper-large-v3-turbo",
             transcription_time_seconds=5.0,
             created_at="2026-01-01T00:00:00Z",
         )
@@ -134,7 +134,7 @@ class TestTranscriptionResult:
             file_size_bytes=500,
             duration_seconds=5.0,
             language="es",
-            model="mlx-community/whisper-large-v3-mlx",
+            model="mlx-community/whisper-large-v3-turbo",
             transcription_time_seconds=2.0,
             created_at="2026-01-01T00:00:00Z",
         )
@@ -148,7 +148,7 @@ class TestTranscriptionResult:
             file_size_bytes=1000,
             duration_seconds=10.0,
             language="es",
-            model="mlx-community/whisper-large-v3-mlx",
+            model="mlx-community/whisper-large-v3-turbo",
             transcription_time_seconds=5.0,
             created_at="2026-01-01T00:00:00Z",
         )
@@ -175,7 +175,7 @@ class TestTranscriptionResult:
             file_size_bytes=1000,
             duration_seconds=10.0,
             language="es",
-            model="mlx-community/whisper-large-v3-mlx",
+            model="mlx-community/whisper-large-v3-turbo",
             transcription_time_seconds=5.0,
             created_at="2026-01-01T00:00:00Z",
         )
@@ -202,7 +202,7 @@ class TestTranscriptionResult:
             file_size_bytes=1000,
             duration_seconds=10.0,
             language="es",
-            model="mlx-community/whisper-large-v3-mlx",
+            model="mlx-community/whisper-large-v3-turbo",
             transcription_time_seconds=5.0,
             created_at="2026-01-01T00:00:00Z",
         )
@@ -227,7 +227,7 @@ class TestTranscriptionResult:
             file_size_bytes=1000,
             duration_seconds=10.0,
             language="es",
-            model="mlx-community/whisper-large-v3-mlx",
+            model="mlx-community/whisper-large-v3-turbo",
             transcription_time_seconds=5.0,
             created_at="2026-01-01T00:00:00Z",
         )
@@ -255,7 +255,7 @@ class TestTranscriptionResult:
             file_size_bytes=1000,
             duration_seconds=10.0,
             language="es",
-            model="mlx-community/whisper-large-v3-mlx",
+            model="mlx-community/whisper-large-v3-turbo",
             transcription_time_seconds=5.0,
             created_at="2026-01-01T00:00:00Z",
         )

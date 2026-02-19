@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from whisper_meetings.schema import Metadata, Segment, TranscriptionResult, Word
 
-MODEL = "mlx-community/whisper-large-v3-mlx"
+MODEL = "mlx-community/whisper-large-v3-turbo"
 DEFAULT_LANGUAGE = "es"
 
 

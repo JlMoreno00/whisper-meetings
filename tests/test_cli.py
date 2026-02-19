@@ -35,7 +35,7 @@ def make_mock_result(
 
 class TestCliHelp:
     def test_cli_help(self):
-        """--help shows AUDIO_FILE, --output, --stdout, and description."""
+        """--help shows AUDIO_FILE, --output, --stdout, --word-timestamps, and description."""
         runner = CliRunner()
         result = runner.invoke(main, ["--help"])
 
@@ -43,6 +43,7 @@ class TestCliHelp:
         assert "AUDIO_FILE" in result.output
         assert "--output" in result.output
         assert "--stdout" in result.output
+        assert "--word-timestamps" in result.output
         assert "Transcribe meeting audio" in result.output
 
 

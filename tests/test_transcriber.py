@@ -151,7 +151,7 @@ class TestTranscriber:
             "test.mp3",
             path_or_hf_repo=MODEL_REPO,
             language=LANGUAGE,
-            word_timestamps=True,
+            word_timestamps=False,
             verbose=False,
         )
 
@@ -201,7 +201,7 @@ class TestTranscriber:
         assert mock_transcribe.call_count == 2
 
         first_kwargs = mock_transcribe.call_args_list[0].kwargs
-        assert first_kwargs.get("word_timestamps") is True
+        assert first_kwargs.get("word_timestamps") is False
 
         second_kwargs = mock_transcribe.call_args_list[1].kwargs
         assert "word_timestamps" not in second_kwargs
@@ -217,7 +217,7 @@ class TestTranscriber:
 
 
 def test_model_repo_constant():
-    assert MODEL_REPO == "mlx-community/whisper-large-v3-mlx"
+    assert MODEL_REPO == "mlx-community/whisper-large-v3-turbo"
 
 
 def test_language_constant():

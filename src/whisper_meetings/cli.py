@@ -27,7 +27,15 @@ from .validators import (
 @click.option(
     "--stdout", "use_stdout", is_flag=True, help="Output JSON to stdout instead of file"
 )
-def main(audio_file: str, output: str | None, use_stdout: bool) -> None:
+@click.option(
+    "--word-timestamps",
+    is_flag=True,
+    default=False,
+    help="Include per-word timestamps and confidence scores (slower)",
+)
+def main(
+    audio_file: str, output: str | None, use_stdout: bool, word_timestamps: bool
+) -> None:
     """Transcribe meeting audio to structured JSON using Whisper."""
     # 1. Determine output path (only needed for file mode)
     output_path: Path | None = None
@@ -43,7 +51,7 @@ def main(audio_file: str, output: str | None, use_stdout: bool) -> None:
 
     try:
         # 3. Run the pipeline (thin wrapper — all logic lives in Transcriber)
-        result = Transcriber().transcribe(audio_file)
+        result = Transcriber().transcribe(audio_file, word_timestamps=word_timestamps)
     except FileNotFoundError as exc:
         click.echo(f"Error: {exc}", err=True)
         sys.exit(EXIT_FILE_NOT_FOUND)

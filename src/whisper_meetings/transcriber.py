@@ -8,7 +8,7 @@ from whisper_meetings.mapper import map_transcription
 from whisper_meetings.validators import check_ffmpeg_installed, validate_audio_file
 from whisper_meetings.schema import TranscriptionResult
 
-MODEL_REPO = "mlx-community/whisper-large-v3-mlx"
+MODEL_REPO = "mlx-community/whisper-large-v3-turbo"
 LANGUAGE = "es"
 
 
@@ -30,11 +30,15 @@ class Transcriber:
         7. return result
     """
 
-    def transcribe(self, audio_path: str) -> TranscriptionResult:
+    def transcribe(
+        self, audio_path: str, *, word_timestamps: bool = False
+    ) -> TranscriptionResult:
         """Transcribe an audio file to a structured TranscriptionResult.
 
         Args:
             audio_path: Path to the audio file to transcribe.
+            word_timestamps: If True, include per-word timestamps and
+                confidence scores. Disabled by default for speed.
 
         Returns:
             TranscriptionResult with metadata, segments, and word-level data.
@@ -57,13 +61,13 @@ class Transcriber:
         # Step 3: Start wall-clock timer
         start = time.perf_counter()
 
-        # Step 4: Run mlx_whisper with word_timestamps; fallback on TypeError
+        # Step 4: Run mlx_whisper; optionally with word_timestamps
         try:
             raw = mlx_whisper.transcribe(
                 audio_path,
                 path_or_hf_repo=MODEL_REPO,
                 language=LANGUAGE,
-                word_timestamps=True,
+                word_timestamps=word_timestamps,
                 verbose=False,
             )
         except TypeError:

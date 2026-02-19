@@ -27,7 +27,7 @@ brew install ffmpeg
 uv sync
 ```
 
-The first time you run a transcription the model (`mlx-community/whisper-large-v3-mlx`,
+The first time you run a transcription the model (`mlx-community/whisper-large-v3-turbo`,
 roughly 3 GB) will be downloaded automatically from Hugging Face and cached locally.
 Subsequent runs are fast.
 
@@ -72,7 +72,7 @@ whisper-meetings weekly-standup.mp3 --stdout | jq '.metadata.duration_seconds'
     "file_size_bytes": 15234567,
     "duration_seconds": 3600.5,
     "language": "es",
-    "model": "mlx-community/whisper-large-v3-mlx",
+    "model": "mlx-community/whisper-large-v3-turbo",
     "transcription_time_seconds": 245.3,
     "created_at": "2026-02-19T10:30:00Z"
   },
