@@ -1,0 +1,18 @@
+{
+  "text": "Hola, bienvenidos a la reunión semanal.",
+  "segments": [
+    {
+      "id": 0,
+      "seek": 0,
+      "start": 0.0,
+      "end": 5.2,
+      "text": "Hola, bienvenidos a la reunión semanal.",
+      "tokens": [50258, 12188, 11, 3228, 1456, 1660, 307, 307, 307],
+      "temperature": 0.0,
+      "avg_logprob": -0.234,
+      "compression_ratio": 1.45,
+      "no_speech_prob": 0.012
+    }
+  ],
+  "language": "es"
+}

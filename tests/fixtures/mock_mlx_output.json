@@ -1,0 +1,26 @@
+{
+  "text": "Hola, bienvenidos a la reunión semanal.",
+  "segments": [
+    {
+      "id": 0,
+      "seek": 0,
+      "start": 0.0,
+      "end": 5.2,
+      "text": "Hola, bienvenidos a la reunión semanal.",
+      "tokens": [50258, 12188, 11, 3228, 1456, 1660, 307, 307, 307],
+      "temperature": 0.0,
+      "avg_logprob": -0.234,
+      "compression_ratio": 1.45,
+      "no_speech_prob": 0.012,
+      "words": [
+        {"word": "Hola,", "start": 0.0, "end": 0.4, "probability": 0.92},
+        {"word": "bienvenidos", "start": 0.5, "end": 1.1, "probability": 0.87},
+        {"word": "a", "start": 1.15, "end": 1.2, "probability": 0.95},
+        {"word": "la", "start": 1.25, "end": 1.3, "probability": 0.96},
+        {"word": "reunión", "start": 1.35, "end": 1.7, "probability": 0.89},
+        {"word": "semanal.", "start": 1.75, "end": 2.1, "probability": 0.91}
+      ]
+    }
+  ],
+  "language": "es"
+}

@@ -1,0 +1,29 @@
+[project]
+name = "whisper-meetings"
+version = "0.1.0"
+description = "CLI tool to transcribe meeting audio to structured JSON using mlx-whisper"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "mlx-whisper>=0.4.0",
+    "click>=8.0",
+]
+
+[project.scripts]
+whisper-meetings = "whisper_meetings.cli:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-mock>=3.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-mock>=3.0",
+]
