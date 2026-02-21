@@ -27,7 +27,7 @@ brew install ffmpeg
 
 ```bash
 # 1. Clone and install Python dependencies
-git clone https://github.com/YOUR_USER/whisper-meetings.git
+git clone https://github.com/JlMoreno00/whisper-meetings.git
 cd whisper-meetings
 uv sync
 
