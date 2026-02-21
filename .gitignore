@@ -1,10 +1,65 @@
-# Python-generated files
+# --- Python ---
 __pycache__/
-*.py[oc]
+*.py[cod]
+*$py.class
+*.so
 build/
 dist/
 wheels/
-*.egg-info
+*.egg-info/
+*.egg
 
 # Virtual environments
-.venv
+.venv/
+venv/
+ENV/
+
+# pytest / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# --- Node / Electron ---
+node_modules/
+electron/node_modules/
+electron/dist/
+electron/out/
+*.asar
+
+# --- OS files ---
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# --- IDE / Editor ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# --- Environment / Secrets ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.cert
+
+# --- Audio / session output (user data, never commit) ---
+*.wav
+*.mp3
+*.m4a
+*.flac
+*.ogg
+*.webm
+WhisperMeetings/
+
+# --- Internal tooling ---
+.sisyphus/
+.opencode/
