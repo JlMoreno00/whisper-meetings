@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Whisper Meetings</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #000000;
+            --text: #e0e0e8;
+            --text-dim: rgba(224, 224, 232, 0.6);
+            --red: #ff3b30;
+            --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: var(--font-sans);
+            height: 100vh;
+            width: 100vw;
+            overflow: hidden;
+        }
+
+        #canvas-container {
+            position: absolute;
+            inset: 0;
+            z-index: 1;
+        }
+
+        /* Transcription — floating text to the left of the sphere, no borders, no bg */
+        #transcription {
+            position: absolute;
+            z-index: 10;
+            top: calc(50% - 120px);
+            right: calc(50% + 14vw);
+            width: min(320px, 28vw);
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 10px;
+        }
+
+        .message {
+            opacity: 0;
+            transform: translateY(-14px);
+            filter: blur(2px);
+            transition: opacity 0.9s cubic-bezier(0.16, 1, 0.3, 1),
+                        transform 0.9s cubic-bezier(0.16, 1, 0.3, 1),
+                        filter 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+            text-align: right;
+            width: 100%;
+            will-change: transform, opacity, filter;
+        }
+
+        .message.visible {
+            opacity: 1;
+            transform: translateY(0);
+            filter: blur(0);
+        }
+
+        .message.fading {
+            opacity: 0;
+            transform: translateY(8px);
+            filter: blur(2px);
+            transition: opacity 0.85s cubic-bezier(0.16, 1, 0.3, 1),
+                        transform 0.85s cubic-bezier(0.16, 1, 0.3, 1),
+                        filter 0.75s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .message-meta {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            color: rgba(255, 255, 255, 0.10);
+            letter-spacing: 0.03em;
+            margin-bottom: 3px;
+            transition: color 0.8s ease;
+        }
+
+        .message-text {
+            font-size: 14px;
+            line-height: 1.55;
+            color: rgba(224, 224, 232, 0.35);
+            font-weight: 300;
+            letter-spacing: 0.01em;
+            transition: color 0.8s ease;
+        }
+
+        /* Newest message — prominent */
+        .message.visible:first-child .message-text {
+            color: rgba(224, 224, 232, 0.95);
+        }
+
+        .message.visible:first-child .message-meta {
+            color: rgba(255, 255, 255, 0.35);
+        }
+
+        /* Meeting title — appears above transcription after a few messages */
+        #meeting-title {
+            position: absolute;
+            z-index: 10;
+            top: calc(50% - 120px - 32px);
+            right: calc(50% + 14vw);
+            width: min(320px, 28vw);
+            text-align: right;
+            pointer-events: none;
+            opacity: 0;
+            transform: translateY(-6px);
+            filter: blur(2px);
+            transition: opacity 1.4s cubic-bezier(0.16, 1, 0.3, 1),
+                        transform 1.4s cubic-bezier(0.16, 1, 0.3, 1),
+                        filter 1.2s cubic-bezier(0.16, 1, 0.3, 1);
+            font-family: var(--font-sans);
+            font-size: 11px;
+            font-weight: 400;
+            color: rgba(224, 224, 232, 0.22);
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        #meeting-title.visible {
+            opacity: 1;
+            transform: translateY(0);
+            filter: blur(0);
+        }
+
+        /* Controls */
+        #controls {
+            position: absolute;
+            bottom: 48px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 20;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+        }
+
+        #record-btn {
+            width: 52px;
+            height: 52px;
+            border-radius: 50%;
+            background: transparent;
+            border: 1.5px solid rgba(255, 255, 255, 0.12);
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            outline: none;
+        }
+
+        #record-btn:hover {
+            border-color: rgba(255, 255, 255, 0.25);
+        }
+
+        #record-btn:not(.recording) {
+            animation: breathe 3s infinite ease-in-out;
+        }
+
+        @keyframes breathe {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.04); }
+        }
+
+        #record-btn.recording {
+            border-color: var(--red);
+            background: rgba(255, 59, 48, 0.1);
+            animation: pulse-rec 1.5s infinite;
+        }
+
+        @keyframes pulse-rec {
+            0% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.25); }
+            70% { box-shadow: 0 0 0 10px rgba(255, 59, 48, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0); }
+        }
+
+        .icon-mic {
+            width: 18px;
+            height: 18px;
+            fill: rgba(255, 255, 255, 0.4);
+            transition: fill 0.3s ease;
+        }
+
+        #record-btn:hover .icon-mic { fill: rgba(255, 255, 255, 0.6); }
+
+        .icon-stop {
+            width: 14px;
+            height: 14px;
+            border-radius: 2px;
+            background: var(--red);
+            display: none;
+        }
+
+        #record-btn.recording .icon-mic { display: none; }
+        #record-btn.recording .icon-stop { display: block; }
+
+        #timer {
+            font-family: var(--font-mono);
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.3);
+            letter-spacing: 0.5px;
+            transition: color 0.3s ease;
+        }
+
+        #record-btn.recording ~ #timer {
+            color: rgba(255, 59, 48, 0.6);
+        }
+
+        #toast {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%) translateY(16px);
+            background: rgba(255, 59, 48, 0.85);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 13px;
+            opacity: 0;
+            transition: all 0.3s ease;
+            pointer-events: none;
+            z-index: 30;
+        }
+
+        #toast.visible {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        @media (max-width: 768px) {
+            #transcription {
+                right: auto;
+                left: 16px;
+                top: 15%;
+                transform: none;
+                width: 55vw;
+                align-items: flex-start;
+            }
+            .message { text-align: left; }
+        }
+    </style>
+
+    <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js"
+      }
+    }
+    </script>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+    <div id="meeting-title"></div>
+    <div id="transcription"></div>
+
+    <div id="controls">
+        <button id="record-btn" aria-label="Toggle Recording">
+            <svg class="icon-mic" viewBox="0 0 24 24">
+                <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+                <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+            </svg>
+            <div class="icon-stop"></div>
+        </button>
+        <div id="timer">00:00</div>
+    </div>
+
+    <div id="toast">Microphone access required</div>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        // --- Config ---
+        const SPHERE_RADIUS = 7;
+        const PARTICLE_COUNT = 22000;
+        const PARTICLE_SIZE = 0.09;
+        const MAX_MESSAGES = 4;
+        const MSG_INTERVAL = 4000;
+        const MOCK_TITLE = "Sincronización Sprint 22";
+        const TITLE_AFTER = 3;
+
+        // --- State ---
+        const S = {
+            recording: false,
+            startTime: 0,
+            timerIv: null,
+            audioCtx: null,
+            analyser: null,
+            data: null,
+            mic: null,
+            sBass: 0,
+            sAvg: 0,
+            msgIdx: 0,
+            msgIv: null,
+            msgs: [],
+            totalMsgs: 0,
+            titleShown: false
+        };
+
+        // --- Circular particle texture ---
+        function createDotTexture() {
+            const s = 64;
+            const c = document.createElement('canvas');
+            c.width = s; c.height = s;
+            const cx = c.getContext('2d');
+            const g = cx.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
+            g.addColorStop(0, 'rgba(255,255,255,1)');
+            g.addColorStop(0.12, 'rgba(255,255,255,0.85)');
+            g.addColorStop(0.45, 'rgba(255,255,255,0.12)');
+            g.addColorStop(1, 'rgba(255,255,255,0)');
+            cx.fillStyle = g;
+            cx.fillRect(0, 0, s, s);
+            return new THREE.CanvasTexture(c);
+        }
+
+        // --- Mock messages ---
+        const MSGS = [
+            { t: "10:30", s: "Locutor 1", x: "Buenos días a todos, vamos a comenzar la reunión de sincronización del sprint veintidós." },
+            { t: "10:30", s: "Locutor 2", x: "Perfecto, empiezo yo. Ayer terminé la implementación del módulo de autenticación con OAuth." },
+            { t: "10:31", s: "Locutor 2", x: "Hoy voy a trabajar en los tests de integración del flujo de login." },
+            { t: "10:31", s: "Locutor 2", x: "Tengo un blocker con el certificado SSL del entorno de staging, necesito ayuda de infraestructura." },
+            { t: "10:32", s: "Locutor 3", x: "Vale, yo puedo ayudarte con eso después de la reunión." },
+            { t: "10:32", s: "Locutor 2", x: "Gracias. ¿Quién sigue?" },
+            { t: "10:33", s: "Locutor 4", x: "Yo. Estuve trabajando en la migración de la base de datos a PostgreSQL quince." },
+            { t: "10:33", s: "Locutor 4", x: "El script de migración ya está listo, pero encontré un problema con los índices parciales." },
+            { t: "10:34", s: "Locutor 4", x: "Hoy voy a hacer benchmarks para comparar el rendimiento antes y después de la migración." },
+            { t: "10:34", s: "Locutor 4", x: "Sin blockers por mi parte." },
+            { t: "10:35", s: "Locutor 1", x: "Perfecto. Yo estuve revisando los pull requests pendientes del equipo." },
+            { t: "10:35", s: "Locutor 1", x: "Hay tres PRs que necesitan una segunda revisión, os los paso por Slack." },
+            { t: "10:36", s: "Locutor 3", x: "También actualicé la documentación del API con los nuevos endpoints de notificaciones." },
+            { t: "10:36", s: "Locutor 3", x: "Para hoy tengo planificado terminar el diseño del sistema de notificaciones push." },
+            { t: "10:37", s: "Locutor 1", x: "¿Alguien tiene algún otro tema que quiera discutir?" },
+            { t: "10:37", s: "Locutor 2", x: "Sí, quería comentar que la fecha de entrega del milestone tres se ha movido al viernes que viene." },
+            { t: "10:38", s: "Locutor 3", x: "Eso nos da dos días extra. Creo que podemos aprovechar para mejorar la cobertura de tests." },
+            { t: "10:38", s: "Locutor 1", x: "De acuerdo, lo añado al backlog. Si no hay nada más, cerramos la reunión. ¡Buen día a todos!" }
+        ];
+
+        // --- DOM ---
+        const cntr = document.getElementById('canvas-container');
+        const transcription = document.getElementById('transcription');
+        const recordBtn = document.getElementById('record-btn');
+        const timerEl = document.getElementById('timer');
+        const toastEl = document.getElementById('toast');
+        const titleEl = document.getElementById('meeting-title');
+
+        // --- Three.js (direct render, no bloom) ---
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x000000, 0.012);
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 30;
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        cntr.appendChild(renderer.domElement);
+
+        // --- Particle sphere (Fibonacci distribution — uniform, no pole artifacts) ---
+        const vtxCount = PARTICLE_COUNT;
+        const positions = new Float32Array(vtxCount * 3);
+        const colors = new Float32Array(vtxCount * 3);
+        const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+        const step = 2 / vtxCount;
+
+        for (let i = 0; i < vtxCount; i++) {
+            const y = (i * step - 1) + (step / 2);
+            const r = Math.sqrt(1 - y * y);
+            const phi = i * goldenAngle;
+            positions[i * 3]     = Math.cos(phi) * r * SPHERE_RADIUS;
+            positions[i * 3 + 1] = y * SPHERE_RADIUS;
+            positions[i * 3 + 2] = Math.sin(phi) * r * SPHERE_RADIUS;
+            const g = 0.5 + Math.random() * 0.5;
+            colors[i * 3] = g;
+            colors[i * 3 + 1] = g;
+            colors[i * 3 + 2] = g;
+        }
+
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        const origPos = new Float32Array(positions);
+
+        const sphere = new THREE.Points(geo, new THREE.PointsMaterial({
+            size: PARTICLE_SIZE,
+            map: createDotTexture(),
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.82,
+            blending: THREE.AdditiveBlending,
+            sizeAttenuation: true,
+            depthWrite: false
+        }));
+        scene.add(sphere);
+
+        // --- Glow (separate scene, fullscreen quad — rendered FIRST as background) ---
+        const glowScene = new THREE.Scene();
+        const glowCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const glowMat = new THREE.ShaderMaterial({
+            uniforms: { uGlow: { value: 0 } },
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = vec4(position.xy, 0.0, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float uGlow;
+                varying vec2 vUv;
+                void main() {
+                    float d = distance(vUv, vec2(0.5));
+                    // Very subtle ambient radial — barely perceptible
+                    float falloff = 1.0 - smoothstep(0.0, 0.38, d);
+                    float g = falloff * uGlow;
+                    gl_FragColor = vec4(g, g, g, 1.0);
+                }
+            `,
+            depthTest: false,
+            depthWrite: false
+        });
+        glowScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), glowMat));
+        renderer.autoClear = false;
+
+        // --- Audio ---
+        async function initAudio() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                const an = ctx.createAnalyser();
+                an.fftSize = 256;
+                an.smoothingTimeConstant = 0.8;
+                ctx.createMediaStreamSource(stream).connect(an);
+                S.audioCtx = ctx;
+                S.analyser = an;
+                S.data = new Uint8Array(an.frequencyBinCount);
+                S.mic = stream;
+                return true;
+            } catch (_) {
+                toastEl.classList.add('visible');
+                setTimeout(() => toastEl.classList.remove('visible'), 3000);
+                return false;
+            }
+        }
+
+        // --- Render loop ---
+        const clock = new THREE.Clock();
+        const mouse = { x: 0, y: 0 };
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const t = clock.getElapsedTime();
+            const pos = geo.attributes.position.array;
+
+            let bass = 0, avg = 0;
+            if (S.recording && S.analyser) {
+                S.analyser.getByteFrequencyData(S.data);
+                for (let i = 0; i < 10; i++) bass += S.data[i];
+                bass /= 10;
+                for (let i = 0; i < S.data.length; i++) avg += S.data[i];
+                avg /= S.data.length;
+            }
+
+            S.sBass += (bass / 255 - S.sBass) * 0.1;
+            S.sAvg += (avg / 255 - S.sAvg) * 0.1;
+
+            sphere.rotation.y += 0.0008;
+            sphere.rotation.x += (mouse.y * 0.04 - sphere.rotation.x) * 0.04;
+            sphere.rotation.z += (mouse.x * 0.04 - sphere.rotation.z) * 0.04;
+
+            const sc = 1 + S.sBass * 0.2;
+            sphere.scale.lerp(new THREE.Vector3(sc, sc, sc), 0.05);
+
+            for (let i = 0; i < vtxCount; i++) {
+                const ox = origPos[i * 3],
+                      oy = origPos[i * 3 + 1],
+                      oz = origPos[i * 3 + 2];
+
+                const n = Math.sin(ox * 0.4 + t * 2) *
+                          Math.cos(oy * 0.3 + t * 1.5) *
+                          Math.sin(oz * 0.4 + t * 2.5);
+
+                const d = (1 + Math.sin(t * 0.8) * 0.015) + n * 0.06 + n * S.sAvg * 1.0;
+
+                pos[i * 3]     = ox * d;
+                pos[i * 3 + 1] = oy * d;
+                pos[i * 3 + 2] = oz * d;
+            }
+            geo.attributes.position.needsUpdate = true;
+
+            // Glow: smooth fade in/out
+            const glowTarget = S.recording ? 0.06 : 0;
+            glowMat.uniforms.uGlow.value += (glowTarget - glowMat.uniforms.uGlow.value) * 0.025;
+
+            // Multi-pass: glow background → particles
+            renderer.clear();
+            renderer.render(glowScene, glowCam);
+            renderer.render(scene, camera);
+        }
+
+        // --- Messages ---
+        function pushMsg(msg) {
+            // 1. Capture positions of ALL existing messages before DOM change
+            const rects = S.msgs.map(el => el.getBoundingClientRect());
+
+            // 2. Prepend new message
+            const el = document.createElement('div');
+            el.className = 'message';
+            el.innerHTML = `<div class="message-meta">${msg.t} · ${msg.s}</div><div class="message-text">${msg.x}</div>`;
+            transcription.prepend(el);
+            S.msgs.unshift(el);
+
+            // 3. Collect overflow (remove from array, keep in DOM for animated exit)
+            const overflow = [];
+            while (S.msgs.length > MAX_MESSAGES) {
+                overflow.push(S.msgs.pop());
+            }
+
+            // 4. FLIP: position ALL existing msgs (staying + overflow) at their old spots
+            const allExisting = [...S.msgs.slice(1), ...overflow];
+            allExisting.forEach((m, i) => {
+                const dy = rects[i].top - m.getBoundingClientRect().top;
+                if (Math.abs(dy) > 0.5) {
+                    m.style.transition = 'none';
+                    m.style.transform = `translateY(${dy}px)`;
+                    void m.offsetHeight;
+                }
+            });
+
+            // 5. Animate staying messages → slide to new position
+            S.msgs.slice(1).forEach(m => {
+                m.style.transition = 'transform 0.7s cubic-bezier(0.16, 1, 0.3, 1)';
+                m.style.transform = 'translateY(0)';
+                setTimeout(() => { m.style.transition = ''; m.style.transform = ''; }, 750);
+            });
+
+            // 6. Overflow: fade in place (stays at old position, fades + blurs)
+            overflow.forEach(old => {
+                old.style.transition = 'opacity 0.85s cubic-bezier(0.16, 1, 0.3, 1), filter 0.75s cubic-bezier(0.16, 1, 0.3, 1)';
+                old.style.opacity = '0';
+                old.style.filter = 'blur(2px)';
+                setTimeout(() => old.remove(), 900);
+            });
+
+            // 7. Fade in new message
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => el.classList.add('visible'));
+            });
+
+            // 8. Show meeting title after N messages
+            S.totalMsgs++;
+            if (S.totalMsgs === TITLE_AFTER && !S.titleShown) {
+                S.titleShown = true;
+                titleEl.textContent = MOCK_TITLE;
+                requestAnimationFrame(() => titleEl.classList.add('visible'));
+            }
+        }
+
+        function startMsgs() {
+            pushMsg(MSGS[0]);
+            S.msgIdx = 1;
+            S.msgIv = setInterval(() => {
+                if (S.msgIdx < MSGS.length) {
+                    pushMsg(MSGS[S.msgIdx]);
+                    S.msgIdx++;
+                } else {
+                    S.msgIdx = 0;
+                }
+            }, MSG_INTERVAL);
+        }
+
+        function stopMsgs() {
+            clearInterval(S.msgIv);
+            S.msgIv = null;
+            S.totalMsgs = 0;
+            S.titleShown = false;
+            titleEl.classList.remove('visible');
+            // Fade bottom-to-top (reverse: oldest at bottom fades first)
+            const copy = [...S.msgs].reverse();
+            copy.forEach((el, i) => {
+                setTimeout(() => {
+                    el.style.transition = '';
+                    el.style.transform = '';
+                    el.classList.remove('visible');
+                    el.classList.add('fading');
+                    setTimeout(() => el.remove(), 900);
+                }, i * 150);
+            });
+            S.msgs = [];
+        }
+
+        // --- Toggle ---
+        async function toggle() {
+            if (!S.recording) {
+                if (await initAudio()) {
+                    S.recording = true;
+                    recordBtn.classList.add('recording');
+                    S.startTime = Date.now();
+                    S.timerIv = setInterval(() => {
+                        const s = Math.floor((Date.now() - S.startTime) / 1000);
+                        timerEl.textContent = `${(s / 60 | 0).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
+                    }, 1000);
+                    startMsgs();
+                }
+            } else {
+                S.recording = false;
+                recordBtn.classList.remove('recording');
+                clearInterval(S.timerIv);
+                if (S.audioCtx) { S.audioCtx.close(); S.audioCtx = null; }
+                if (S.mic) { S.mic.getTracks().forEach(t => t.stop()); S.mic = null; }
+                stopMsgs();
+                setTimeout(() => { timerEl.textContent = '00:00'; }, 800);
+            }
+        }
+
+        // --- Events ---
+        recordBtn.addEventListener('click', toggle);
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+        document.addEventListener('mousemove', e => {
+            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+        });
+
+        animate();
+    </script>
+</body>
+</html>

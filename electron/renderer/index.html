@@ -1,0 +1,2371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Whisper Meetings</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #000000;
+            --text: #e0e0e8;
+            --text-dim: rgba(224, 224, 232, 0.6);
+            --red: #ff3b30;
+            --accent-rgb: 230,230,230;
+            --ambient-alpha: 0.12;
+            --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: var(--font-sans);
+            height: 100vh;
+            width: 100vw;
+            overflow: hidden;
+            -webkit-app-region: drag;
+        }
+
+        button, #canvas-container, #open-panel-btn { -webkit-app-region: no-drag; }
+
+        #canvas-container {
+            position: absolute;
+            inset: 0;
+            z-index: 1;
+        }
+
+        #ambient-glow {
+            position: absolute;
+            inset: 0;
+            z-index: 2;
+            pointer-events: none;
+            background:
+                radial-gradient(circle at 52% 48%, rgba(var(--accent-rgb), var(--ambient-alpha)) 0%, rgba(var(--accent-rgb), 0) 55%),
+                radial-gradient(circle at 70% 70%, rgba(var(--accent-rgb), calc(var(--ambient-alpha) * 0.35)) 0%, rgba(var(--accent-rgb), 0) 60%);
+            transition: background 0.45s ease;
+        }
+
+        #sphere-shadow {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: min(24vw, 290px);
+            height: min(24vw, 290px);
+            transform: translate(-50%, -50%);
+            z-index: 6;
+            pointer-events: none;
+            background: radial-gradient(circle at center, rgba(0, 0, 0, 0.36) 0%, rgba(0, 0, 0, 0.0) 74%);
+            filter: blur(10px);
+        }
+
+        #controls-shadow {
+            display: none;
+        }
+
+        #transcription-shadow {
+            display: none;
+        }
+
+        #drag-region {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 36px;
+            z-index: 35;
+            -webkit-app-region: drag;
+            pointer-events: auto;
+        }
+
+        #transcription {
+            position: absolute;
+            z-index: 10;
+            top: calc(50% - 120px);
+            right: calc(50% + 14vw);
+            width: min(320px, 28vw);
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 10px;
+            text-shadow: 0 1px 4px rgba(0, 0, 0, 0.75);
+            filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.42));
+        }
+
+        .message {
+            opacity: 0;
+            transform: translateY(-14px);
+            filter: blur(2px);
+            transition: opacity 0.9s cubic-bezier(0.16, 1, 0.3, 1),
+                        transform 0.9s cubic-bezier(0.16, 1, 0.3, 1),
+                        filter 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+            text-align: right;
+            width: 100%;
+            will-change: transform, opacity, filter;
+        }
+
+        .message.visible {
+            opacity: 1;
+            transform: translateY(0);
+            filter: blur(0);
+        }
+
+        .message.fading {
+            opacity: 0;
+            transform: translateY(8px);
+            filter: blur(2px);
+            transition: opacity 0.85s cubic-bezier(0.16, 1, 0.3, 1),
+                        transform 0.85s cubic-bezier(0.16, 1, 0.3, 1),
+                        filter 0.75s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .message-meta {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            color: rgba(255, 255, 255, 0.10);
+            letter-spacing: 0.03em;
+            margin-bottom: 3px;
+            transition: color 0.8s ease;
+        }
+
+        .message-text {
+            font-size: 14px;
+            line-height: 1.55;
+            color: rgba(224, 224, 232, 0.35);
+            font-weight: 300;
+            letter-spacing: 0.01em;
+            transition: color 0.8s ease;
+        }
+
+        .message.visible:first-child .message-text {
+            color: rgba(224, 224, 232, 0.95);
+        }
+
+        .message.visible:first-child .message-meta {
+            color: rgba(255, 255, 255, 0.35);
+        }
+
+        .message.partial .message-text {
+            font-style: italic;
+            color: rgba(224, 224, 232, 0.55);
+        }
+
+        #meeting-title {
+            position: absolute;
+            z-index: 10;
+            top: calc(50% - 120px - 32px);
+            right: calc(50% + 14vw);
+            width: min(320px, 28vw);
+            text-align: right;
+            pointer-events: none;
+            opacity: 0;
+            transform: translateY(-6px);
+            filter: blur(2px);
+            transition: opacity 1.4s cubic-bezier(0.16, 1, 0.3, 1),
+                        transform 1.4s cubic-bezier(0.16, 1, 0.3, 1),
+                        filter 1.2s cubic-bezier(0.16, 1, 0.3, 1);
+            font-family: var(--font-sans);
+            font-size: 11px;
+            font-weight: 400;
+            color: rgba(224, 224, 232, 0.22);
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+        }
+
+        #meeting-title.visible {
+            opacity: 1;
+            transform: translateY(0);
+            filter: blur(0);
+        }
+
+        #controls {
+            position: absolute;
+            bottom: 48px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 20;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            text-shadow: 0 1px 4px rgba(0, 0, 0, 0.78);
+            filter: drop-shadow(0 12px 20px rgba(0, 0, 0, 0.5));
+        }
+
+        #record-btn {
+            width: 52px;
+            height: 52px;
+            border-radius: 50%;
+            background: transparent;
+            border: 1.5px solid rgba(255, 255, 255, 0.12);
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            outline: none;
+        }
+
+        #record-btn:disabled {
+            cursor: not-allowed;
+            border-color: rgba(255, 255, 255, 0.06);
+            opacity: 0.45;
+            animation: none;
+        }
+
+        #record-btn:hover { border-color: rgba(255, 255, 255, 0.25); }
+
+        #record-btn:not(.recording) {
+            animation: breathe 3s infinite ease-in-out;
+        }
+
+        @keyframes breathe {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.04); }
+        }
+
+        #record-btn.recording {
+            border-color: var(--red);
+            background: rgba(255, 59, 48, 0.1);
+            animation: pulse-rec 1.5s infinite;
+        }
+
+        @keyframes pulse-rec {
+            0% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.25); }
+            70% { box-shadow: 0 0 0 10px rgba(255, 59, 48, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0); }
+        }
+
+        .icon-mic {
+            width: 18px;
+            height: 18px;
+            fill: rgba(255, 255, 255, 0.4);
+            transition: fill 0.3s ease;
+        }
+
+        #record-btn:hover .icon-mic { fill: rgba(255, 255, 255, 0.6); }
+
+        .icon-stop {
+            width: 14px;
+            height: 14px;
+            border-radius: 2px;
+            background: var(--red);
+            display: none;
+        }
+
+        #record-btn.recording .icon-mic { display: none; }
+        #record-btn.recording .icon-stop { display: block; }
+
+        #timer {
+            font-family: var(--font-mono);
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.3);
+            letter-spacing: 0.5px;
+            transition: color 0.3s ease;
+        }
+
+        #backend-status {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: rgba(255, 255, 255, 0.35);
+        }
+
+        #backend-status.ready {
+            color: rgba(175, 238, 190, 0.78);
+        }
+
+        #backend-status.error {
+            color: rgba(255, 99, 99, 0.84);
+        }
+
+        #theme-btn {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            color: rgba(255, 255, 255, 0.72);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 999px;
+            padding: 6px 12px;
+            cursor: pointer;
+            transition: border-color 0.2s ease, background 0.2s ease;
+        }
+
+        #theme-btn:hover {
+            border-color: rgba(255, 255, 255, 0.28);
+            background: rgba(255, 255, 255, 0.06);
+        }
+
+        #save-path {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            color: rgba(255, 255, 255, 0.32);
+            letter-spacing: 0.01em;
+            max-width: min(72vw, 720px);
+            text-align: center;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            opacity: 0;
+            transform: translateY(4px);
+            transition: opacity 0.25s ease, transform 0.25s ease;
+        }
+
+        #save-path.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        #visual-panel {
+            position: absolute;
+            right: 22px;
+            bottom: 22px;
+            z-index: 24;
+            width: min(290px, 32vw);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            background: rgba(12, 12, 14, 0.74);
+            backdrop-filter: blur(10px);
+            border-radius: 14px;
+            padding: 12px;
+            display: grid;
+            gap: 8px;
+            -webkit-app-region: no-drag;
+        }
+
+        #visual-panel h3 {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: rgba(255, 255, 255, 0.72);
+            margin-bottom: 4px;
+        }
+
+        .control-row {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .control-row label,
+        .control-row output {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            color: rgba(255, 255, 255, 0.62);
+        }
+
+        .control-row input[type="range"] {
+            grid-column: 1 / 3;
+            width: 100%;
+            accent-color: rgba(var(--accent-rgb), 0.85);
+        }
+
+        #record-btn.recording ~ #timer {
+            color: rgba(255, 59, 48, 0.6);
+        }
+
+        #toast {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%) translateY(16px);
+            background: rgba(255, 59, 48, 0.85);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 13px;
+            opacity: 0;
+            transition: all 0.3s ease;
+            pointer-events: none;
+            z-index: 30;
+        }
+
+        #toast.visible {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        @media (max-width: 768px) {
+            #transcription {
+                right: auto;
+                left: 16px;
+                top: 15%;
+                transform: none;
+                width: 55vw;
+                align-items: flex-start;
+            }
+            #visual-panel {
+                width: min(320px, calc(100vw - 24px));
+                right: 12px;
+                bottom: 12px;
+            }
+            .message { text-align: left; }
+        }
+
+        /* --- New Panel Styles --- */
+        #visual-panel {
+            display: flex;
+            flex-direction: column;
+            max-height: calc(100dvh - 24px);
+            padding: 0;
+            overflow: hidden;
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
+        }
+
+        #visual-panel.collapsed {
+            transform: translateX(20px) scale(0.95);
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .panel-header h3 { margin: 0; }
+
+        #close-panel-btn {
+            background: none;
+            border: none;
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 18px;
+            cursor: pointer;
+            padding: 4px;
+            line-height: 1;
+            transition: color 0.2s;
+        }
+        #close-panel-btn:hover { color: white; }
+
+        .panel-content {
+            overflow-y: auto;
+            min-height: 0;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        /* Scrollbar styling */
+        .panel-content::-webkit-scrollbar { width: 4px; }
+        .panel-content::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.02); }
+        .panel-content::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); border-radius: 2px; }
+
+        details {
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        summary {
+            padding: 10px 12px;
+            cursor: pointer;
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.8);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            user-select: none;
+            list-style: none;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            transition: background 0.2s;
+        }
+
+        summary:hover { background: rgba(255, 255, 255, 0.05); }
+        summary::-webkit-details-marker { display: none; }
+
+        summary::after {
+            content: '›';
+            font-size: 14px;
+            transition: transform 0.2s;
+        }
+
+        details[open] summary::after { transform: rotate(90deg); }
+
+        .section-content {
+            padding: 12px;
+            display: grid;
+            gap: 12px;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .placeholder {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            color: rgba(255, 255, 255, 0.3);
+            text-align: center;
+            padding: 20px;
+            font-style: italic;
+        }
+
+        /* Background Type Selector */
+        .bg-type-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 6px;
+        }
+
+        .bg-type-btn {
+            font-family: var(--font-mono);
+            font-size: 9px;
+            letter-spacing: 0.03em;
+            color: rgba(255, 255, 255, 0.5);
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 6px;
+            padding: 6px 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: center;
+        }
+
+        .bg-type-btn:hover {
+            background: rgba(255, 255, 255, 0.08);
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .bg-type-btn.active {
+            background: rgba(var(--accent-rgb), 0.15);
+            border-color: rgba(var(--accent-rgb), 0.4);
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        /* Color Palette Swatches */
+        .palette-grid {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 6px;
+        }
+
+        .palette-swatch {
+            width: 100%;
+            aspect-ratio: 1;
+            border-radius: 6px;
+            border: 2px solid transparent;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .palette-swatch:hover { transform: scale(1.1); }
+
+        .palette-swatch.active {
+            border-color: rgba(255, 255, 255, 0.8);
+            box-shadow: 0 0 8px rgba(var(--accent-rgb), 0.4);
+        }
+
+        .palette-swatch .swatch-colors {
+            position: absolute;
+            inset: 0;
+            display: flex;
+        }
+
+        .palette-swatch .swatch-colors span { flex: 1; }
+
+        .color-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+        }
+
+        .color-row label {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            color: rgba(255, 255, 255, 0.62);
+            flex: 1;
+        }
+
+        .color-row input[type="color"] {
+            -webkit-appearance: none;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 4px;
+            width: 32px;
+            height: 24px;
+            padding: 1px;
+            background: transparent;
+            cursor: pointer;
+        }
+
+        .color-row input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+        .color-row input[type="color"]::-webkit-color-swatch { border: none; border-radius: 3px; }
+
+        /* Named Presets */
+        .preset-save-row {
+            display: flex;
+            gap: 6px;
+        }
+
+        .preset-name-input {
+            flex: 1;
+            font-family: var(--font-mono);
+            font-size: 10px;
+            color: rgba(255, 255, 255, 0.8);
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 6px;
+            padding: 6px 8px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .preset-name-input:focus { border-color: rgba(var(--accent-rgb), 0.5); }
+        .preset-name-input::placeholder { color: rgba(255, 255, 255, 0.25); }
+
+        .preset-save-btn, .preset-load-btn, .preset-delete-btn {
+            font-family: var(--font-mono);
+            font-size: 9px;
+            border-radius: 6px;
+            padding: 5px 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+        }
+
+        .preset-save-btn {
+            background: rgba(var(--accent-rgb), 0.15);
+            color: rgba(255, 255, 255, 0.8);
+            border-color: rgba(var(--accent-rgb), 0.3);
+            white-space: nowrap;
+        }
+
+        .preset-save-btn:hover { background: rgba(var(--accent-rgb), 0.25); }
+
+        .preset-list {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .preset-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 8px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 6px;
+            transition: background 0.2s;
+        }
+
+        .preset-item:hover { background: rgba(255, 255, 255, 0.06); }
+
+        .preset-item-name {
+            flex: 1;
+            font-family: var(--font-mono);
+            font-size: 10px;
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        .builtin-tag {
+            font-family: var(--font-mono);
+            font-size: 8px;
+            color: rgba(var(--accent-rgb), 0.7);
+            border: 1px solid rgba(var(--accent-rgb), 0.3);
+            border-radius: 4px;
+            padding: 1px 4px;
+        }
+
+        .preset-load-btn {
+            background: rgba(255, 255, 255, 0.05);
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .preset-load-btn:hover { background: rgba(255, 255, 255, 0.1); color: white; }
+
+        .preset-delete-btn {
+            background: rgba(255, 59, 48, 0.08);
+            color: rgba(255, 59, 48, 0.6);
+            border-color: rgba(255, 59, 48, 0.15);
+            padding: 5px 7px;
+        }
+
+        .preset-delete-btn:hover { background: rgba(255, 59, 48, 0.15); color: rgba(255, 59, 48, 0.9); }
+
+        .section-divider {
+            height: 1px;
+            background: rgba(255, 255, 255, 0.06);
+            margin: 4px 0;
+        }
+
+        /* Toggle Switch */
+        .toggle-row {
+            justify-content: space-between;
+        }
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 32px;
+            height: 16px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(255, 255, 255, 0.15);
+            transition: .2s;
+            border-radius: 16px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 12px;
+            width: 12px;
+            left: 2px;
+            bottom: 2px;
+            background-color: white;
+            transition: .2s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: rgba(var(--accent-rgb), 0.8);
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(16px);
+        }
+
+        /* Open Panel Button */
+        #open-panel-btn {
+            position: absolute;
+            bottom: 22px;
+            right: 22px;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: rgba(12, 12, 14, 0.74);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            color: rgba(255, 255, 255, 0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            z-index: 23;
+            backdrop-filter: blur(10px);
+            transition: all 0.2s;
+            font-size: 16px;
+        }
+
+        #open-panel-btn svg {
+            width: 16px;
+            height: 16px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 1.8;
+            vector-effect: non-scaling-stroke;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        #open-panel-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+        }
+
+        #open-panel-btn.hidden {
+            opacity: 0;
+            pointer-events: none;
+            transform: scale(0.8);
+        }
+    </style>
+
+    <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js"
+      }
+    }
+    </script>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+    <div id="ambient-glow"></div>
+    <div id="sphere-shadow"></div>
+    <div id="controls-shadow"></div>
+    <div id="transcription-shadow"></div>
+    <div id="drag-region"></div>
+    <div id="meeting-title"></div>
+    <div id="transcription"></div>
+
+    <div id="controls">
+        <button id="record-btn" aria-label="Toggle Recording">
+            <svg class="icon-mic" viewBox="0 0 24 24">
+                <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+                <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+            </svg>
+            <div class="icon-stop"></div>
+        </button>
+        <div id="timer">00:00</div>
+        <div id="backend-status">Conectando backend...</div>
+        <button id="theme-btn" type="button">Tema: Sobrio</button>
+        <div id="save-path"></div>
+    </div>
+
+    <div id="toast"></div>
+
+    <button id="open-panel-btn" aria-label="Open settings" class="hidden">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="12" cy="12" r="3.1"></circle>
+            <path d="M12 3.2v2.1M12 18.7v2.1M3.2 12h2.1M18.7 12h2.1M5.8 5.8l1.5 1.5M16.7 16.7l1.5 1.5M18.2 5.8l-1.5 1.5M7.3 16.7l-1.5 1.5"></path>
+        </svg>
+    </button>
+
+    <aside id="visual-panel">
+        <div class="panel-header">
+            <h3>Control Visual</h3>
+            <button id="close-panel-btn" aria-label="Close panel">×</button>
+        </div>
+        <div class="panel-content">
+            <details open>
+                <summary>Esfera</summary>
+                <div class="section-content">
+                    <div class="control-row">
+                        <label for="size-slider">Tamano particula</label>
+                        <output id="size-out">0.09</output>
+                        <input id="size-slider" type="range" min="0.05" max="0.22" step="0.01" value="0.09">
+                    </div>
+                    <div class="control-row">
+                        <label for="opacity-slider">Opacidad</label>
+                        <output id="opacity-out">0.82</output>
+                        <input id="opacity-slider" type="range" min="0.35" max="1.00" step="0.01" value="0.82">
+                    </div>
+                    <div class="control-row">
+                        <label for="wave-slider">Intensidad onda</label>
+                        <output id="wave-out">1.00</output>
+                        <input id="wave-slider" type="range" min="0.30" max="2.20" step="0.05" value="1.00">
+                    </div>
+                    <div class="control-row">
+                        <label for="scale-slider">Pulso audio</label>
+                        <output id="scale-out">0.20</output>
+                        <input id="scale-slider" type="range" min="0.05" max="0.60" step="0.01" value="0.20">
+                    </div>
+                    <div class="control-row">
+                        <label for="glow-slider">Glow fondo</label>
+                        <output id="glow-out">0.12</output>
+                        <input id="glow-slider" type="range" min="0.00" max="0.40" step="0.01" value="0.12">
+                    </div>
+
+                    <!-- NEW: Mesh Controls -->
+                    <div class="control-row toggle-row">
+                        <label for="mesh-toggle">Malla Wireframe</label>
+                        <label class="switch">
+                            <input type="checkbox" id="mesh-toggle">
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+                    <div class="control-row" id="mesh-opacity-row" style="display: none;">
+                        <label for="mesh-opacity-slider">Opacidad Malla</label>
+                        <output id="mesh-opacity-out">0.30</output>
+                        <input id="mesh-opacity-slider" type="range" min="0.0" max="1.0" step="0.05" value="0.30">
+                    </div>
+
+                    <!-- NEW: Animation Toggles -->
+                    <div class="control-row toggle-row">
+                        <label for="wave-toggle">Ondas</label>
+                        <label class="switch">
+                            <input type="checkbox" id="wave-toggle" checked>
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+                    <div class="control-row toggle-row">
+                        <label for="spin-toggle">Rotación</label>
+                        <label class="switch">
+                            <input type="checkbox" id="spin-toggle" checked>
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+                    <div class="control-row toggle-row">
+                        <label for="mouse-toggle">Seguir ratón</label>
+                        <label class="switch">
+                            <input type="checkbox" id="mouse-toggle" checked>
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+                    <div class="control-row toggle-row">
+                        <label for="audio-toggle">Reactividad audio</label>
+                        <label class="switch">
+                            <input type="checkbox" id="audio-toggle" checked>
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+                </div>
+            </details>
+
+            <details>
+                <summary>Fondo</summary>
+                <div class="section-content">
+                    <div class="bg-type-grid">
+                        <button class="bg-type-btn active" data-bg="none">Ninguno</button>
+                        <button class="bg-type-btn" data-bg="flicker">Flickering Grid</button>
+                        <button class="bg-type-btn" data-bg="gradient">Gradient Animation</button>
+                        <button class="bg-type-btn" data-bg="retro">Retro Grid</button>
+                        <button class="bg-type-btn" data-bg="spotlight">Spotlight</button>
+                    </div>
+                    <div class="control-row" id="bg-speed-row" style="display:none;">
+                        <label for="bg-speed-slider">Velocidad</label>
+                        <output id="bg-speed-out">0.40</output>
+                        <input id="bg-speed-slider" type="range" min="0.05" max="1.50" step="0.05" value="0.40">
+                    </div>
+                    <div class="control-row" id="bg-intensity-row" style="display:none;">
+                        <label for="bg-intensity-slider">Intensidad</label>
+                        <output id="bg-intensity-out">0.30</output>
+                        <input id="bg-intensity-slider" type="range" min="0.05" max="1.00" step="0.05" value="0.30">
+                    </div>
+                    <div class="control-row" id="bg-scale-row" style="display:none;">
+                        <label for="bg-scale-slider">Escala</label>
+                        <output id="bg-scale-out">1.50</output>
+                        <input id="bg-scale-slider" type="range" min="0.50" max="4.00" step="0.10" value="1.50">
+                    </div>
+                    <div class="control-row" id="bg-density-row" style="display:none;">
+                        <label for="bg-density-slider">Densidad</label>
+                        <output id="bg-density-out">8.00</output>
+                        <input id="bg-density-slider" type="range" min="3.0" max="20.0" step="0.5" value="8.00">
+                    </div>
+                </div>
+            </details>
+            <details>
+                <summary>Colores</summary>
+                <div class="section-content">
+                    <div id="palette-grid" class="palette-grid"></div>
+                    <div class="section-divider"></div>
+                    <div class="color-row">
+                        <label>Partícula</label>
+                        <input type="color" id="color-particle" value="#ffffff">
+                    </div>
+                    <div class="color-row">
+                        <label>Acento / Glow</label>
+                        <input type="color" id="color-accent" value="#e1e1e1">
+                    </div>
+                    <div class="color-row">
+                        <label>Fondo tinte</label>
+                        <input type="color" id="color-bg-tint" value="#ffffff">
+                    </div>
+                </div>
+            </details>
+            <details>
+                <summary>Presets</summary>
+                <div class="section-content">
+                    <div class="preset-save-row">
+                        <input type="text" class="preset-name-input" id="preset-name-input" placeholder="Nombre del preset..." maxlength="24">
+                        <button class="preset-save-btn" id="preset-save-btn">Guardar</button>
+                    </div>
+                    <div class="preset-list" id="preset-list"></div>
+                </div>
+            </details>
+        </div>
+    </aside>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        const SPHERE_RADIUS = 7;
+        const PARTICLE_COUNT = 22000;
+        const PARTICLE_SIZE = 0.09;
+        const MAX_MESSAGES = 4;
+        const TITLE_AFTER = 3;
+        const WS_PORT = 8766;
+        const THEMES = [
+            {
+                id: 'sobrio',
+                label: 'Sobrio',
+                minGray: 0.62,
+                maxGray: 1.0,
+                particleSize: 0.12,
+                particleOpacity: 0.9,
+                tint: 0xffffff,
+                accentRgb: '225,225,225',
+                ambientAlpha: 0.12,
+                glow: 0.14,
+                noiseBase: 0.08,
+                noiseAudio: 1.25,
+                scaleAudio: 0.27,
+                spin: 0.001,
+            },
+            {
+                id: 'ice',
+                label: 'Nebula Ice',
+                minGray: 0.58,
+                maxGray: 1.0,
+                particleSize: 0.14,
+                particleOpacity: 0.92,
+                tint: 0xb9ddff,
+                accentRgb: '136,188,255',
+                ambientAlpha: 0.2,
+                glow: 0.22,
+                noiseBase: 0.1,
+                noiseAudio: 1.45,
+                scaleAudio: 0.33,
+                spin: 0.0013,
+            },
+            {
+                id: 'ember',
+                label: 'Solar Ember',
+                minGray: 0.56,
+                maxGray: 1.0,
+                particleSize: 0.16,
+                particleOpacity: 0.96,
+                tint: 0xffb08d,
+                accentRgb: '255,130,88',
+                ambientAlpha: 0.24,
+                glow: 0.28,
+                noiseBase: 0.12,
+                noiseAudio: 1.75,
+                scaleAudio: 0.38,
+                spin: 0.0015,
+            },
+        ];
+
+        const PALETTES = [
+            { id: 'arctic', label: 'Arctic', particle: '#c8e6ff', accent: '#88bcff', bgTint: '#4488cc' },
+            { id: 'ember', label: 'Ember', particle: '#ffb08d', accent: '#ff8258', bgTint: '#cc4422' },
+            { id: 'toxic', label: 'Toxic', particle: '#a8ff9b', accent: '#44ff33', bgTint: '#228811' },
+            { id: 'violet', label: 'Violet', particle: '#d4aaff', accent: '#9966ff', bgTint: '#663399' },
+            { id: 'gold', label: 'Gold', particle: '#ffe4a0', accent: '#ffcc44', bgTint: '#aa8822' },
+            { id: 'crimson', label: 'Crimson', particle: '#ff9999', accent: '#ff4455', bgTint: '#aa2233' },
+            { id: 'ocean', label: 'Ocean', particle: '#99ddff', accent: '#33aadd', bgTint: '#226688' },
+            { id: 'neon', label: 'Neon', particle: '#ff99ff', accent: '#ff33ff', bgTint: '#882288' },
+            { id: 'forest', label: 'Forest', particle: '#88ccaa', accent: '#44aa77', bgTint: '#225533' },
+            { id: 'sunset', label: 'Sunset', particle: '#ffaa88', accent: '#ff6644', bgTint: '#884422' },
+            { id: 'ice', label: 'Ice', particle: '#eeffff', accent: '#aaddee', bgTint: '#668899' },
+            { id: 'mono', label: 'Mono', particle: '#ffffff', accent: '#e1e1e1', bgTint: '#888888' },
+        ];
+
+        function hexToRgb(hex) {
+            const h = hex.replace('#', '');
+            return `${parseInt(h.slice(0,2),16)},${parseInt(h.slice(2,4),16)},${parseInt(h.slice(4,6),16)}`;
+        }
+
+        function hexToThree(hex) {
+            return parseInt(hex.replace('#', ''), 16);
+        }
+
+        function threeToHex(n) {
+            return '#' + n.toString(16).padStart(6, '0');
+        }
+
+        const USER_PRESETS_KEY = 'whisper-meetings-user-presets';
+
+        const S = {
+            recording: false,
+            backendReady: false,
+            startTime: 0,
+            timerIv: null,
+            audioCtx: null,
+            analyser: null,
+            data: null,
+            mic: null,
+            workletNode: null,
+            ws: null,
+            sBass: 0,
+            sAvg: 0,
+            msgs: [],
+            partialEl: null,
+            totalMsgs: 0,
+            titleShown: false,
+            themeIndex: 0,
+            visual: {
+                particleSize: PARTICLE_SIZE,
+                particleOpacity: 0.82,
+                noiseAudio: 1.0,
+                scaleAudio: 0.2,
+                glow: 0.12,
+                spin: 0.001,
+                meshEnabled: false,
+                meshOpacity: 0.3,
+                waveEnabled: true,
+                spinEnabled: true,
+                mouseEnabled: true,
+                audioEnabled: true,
+                bgType: 'none',
+                bgSpeed: 0.4,
+                bgIntensity: 0.3,
+                bgScale: 1.5,
+                bgDensity: 8.0,
+                paletteId: null,
+                particleColor: '#ffffff',
+                accentColor: '#e1e1e1',
+                bgTint: '#ffffff',
+            },
+        };
+
+        const cntr = document.getElementById('canvas-container');
+        const transcription = document.getElementById('transcription');
+        const recordBtn = document.getElementById('record-btn');
+        const timerEl = document.getElementById('timer');
+        const backendStatusEl = document.getElementById('backend-status');
+        const themeBtn = document.getElementById('theme-btn');
+        const sizeSlider = document.getElementById('size-slider');
+        const opacitySlider = document.getElementById('opacity-slider');
+        const waveSlider = document.getElementById('wave-slider');
+        const scaleSlider = document.getElementById('scale-slider');
+        const glowSlider = document.getElementById('glow-slider');
+        const sizeOut = document.getElementById('size-out');
+        const opacityOut = document.getElementById('opacity-out');
+        const waveOut = document.getElementById('wave-out');
+        const scaleOut = document.getElementById('scale-out');
+        const glowOut = document.getElementById('glow-out');
+        
+        const meshToggle = document.getElementById('mesh-toggle');
+        const meshOpacityRow = document.getElementById('mesh-opacity-row');
+        const meshOpacitySlider = document.getElementById('mesh-opacity-slider');
+        const meshOpacityOut = document.getElementById('mesh-opacity-out');
+        const waveToggle = document.getElementById('wave-toggle');
+        const spinToggle = document.getElementById('spin-toggle');
+        const mouseToggle = document.getElementById('mouse-toggle');
+        const audioToggle = document.getElementById('audio-toggle');
+        const visualPanel = document.getElementById('visual-panel');
+        const closePanelBtn = document.getElementById('close-panel-btn');
+        const openPanelBtn = document.getElementById('open-panel-btn');
+
+        const savePathEl = document.getElementById('save-path');
+        const toastEl = document.getElementById('toast');
+        const titleEl = document.getElementById('meeting-title');
+        let wsBootstrapping = false;
+
+        // --- Toast ---
+        function showToast(msg, duration = 3000) {
+            toastEl.textContent = msg;
+            toastEl.classList.add('visible');
+            setTimeout(() => toastEl.classList.remove('visible'), duration);
+        }
+
+        function setBackendStatus(kind, text) {
+            backendStatusEl.textContent = text;
+            backendStatusEl.classList.remove('ready', 'error');
+            if (kind === 'ready') backendStatusEl.classList.add('ready');
+            if (kind === 'error') backendStatusEl.classList.add('error');
+
+            S.backendReady = kind === 'ready';
+            if (!S.recording) {
+                recordBtn.disabled = !S.backendReady;
+            }
+        }
+
+        // --- WebSocket ---
+        function connectWS(retries = 12, delay = 250) {
+            return new Promise((resolve, reject) => {
+                let attempt = 0;
+                setBackendStatus('connecting', 'Conectando backend...');
+
+                function tryConnect() {
+                    const ws = new WebSocket(`ws://localhost:${WS_PORT}`);
+                    ws.binaryType = 'arraybuffer';
+
+                    ws.onopen = () => {
+                        S.ws = ws;
+                        setBackendStatus('ready', 'Backend listo');
+                        resolve(ws);
+                    };
+
+                    ws.onmessage = (evt) => {
+                        if (typeof evt.data === 'string') {
+                            handleServerMessage(JSON.parse(evt.data));
+                        }
+                    };
+
+                    ws.onclose = () => {
+                        S.ws = null;
+                        if (!S.recording) {
+                            setBackendStatus('connecting', 'Reconectando backend...');
+                        }
+                    };
+
+                    ws.onerror = () => {
+                        ws.close();
+                        S.ws = null;
+                        attempt++;
+                        if (attempt < retries) {
+                            setTimeout(tryConnect, delay * attempt);
+                        } else {
+                            setBackendStatus('error', 'Backend no disponible');
+                            reject(new Error('WebSocket connection failed'));
+                        }
+                    };
+                }
+
+                tryConnect();
+            });
+        }
+
+        function handleServerMessage(msg) {
+            switch (msg.type) {
+                case 'transcript.partial':
+                    updatePartial(msg.text);
+                    break;
+                case 'transcript.final':
+                    finalizeSegment({
+                        t: msg.timestamp || nowTimestamp(),
+                        s: msg.speaker || 'Locutor',
+                        x: msg.text
+                    });
+                    break;
+                case 'title.update':
+                    titleEl.textContent = msg.title;
+                    if (!S.titleShown) {
+                        S.titleShown = true;
+                        requestAnimationFrame(() => titleEl.classList.add('visible'));
+                    }
+                    break;
+                case 'error':
+                    showToast(msg.message);
+                    break;
+                case 'session.saved':
+                    showToast(`Sesion guardada en: ${msg.session_dir}`, 4500);
+                    savePathEl.textContent = `Guardado: ${msg.session_dir}`;
+                    savePathEl.classList.add('visible');
+                    break;
+            }
+        }
+
+        function nowTimestamp() {
+            const d = new Date();
+            return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+        }
+
+        // --- Partial transcript (italic, replaces in place) ---
+        function updatePartial(text) {
+            if (!text) return;
+            if (!S.partialEl) {
+                S.partialEl = document.createElement('div');
+                S.partialEl.className = 'message partial';
+                S.partialEl.innerHTML = `<div class="message-text"></div>`;
+                transcription.prepend(S.partialEl);
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => S.partialEl.classList.add('visible'));
+                });
+            }
+            S.partialEl.querySelector('.message-text').textContent = text;
+        }
+
+        function removePartial() {
+            if (S.partialEl) {
+                S.partialEl.remove();
+                S.partialEl = null;
+            }
+        }
+
+        // --- Final segment (uses the approved FLIP animation) ---
+        function finalizeSegment(msg) {
+            removePartial();
+            pushMsg(msg);
+        }
+
+        // --- Audio init (mic + analyser for visualization + AudioWorklet for streaming) ---
+        async function initAudio() {
+            if (S.audioCtx && S.workletNode && S.analyser && S.mic) {
+                if (S.audioCtx.state === 'suspended') {
+                    await S.audioCtx.resume();
+                }
+                return true;
+            }
+
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    audio: { channelCount: 1, sampleRate: { ideal: 16000 } }
+                });
+
+                const ctx = new AudioContext({ sampleRate: 48000 });
+                const source = ctx.createMediaStreamSource(stream);
+
+                const analyser = ctx.createAnalyser();
+                analyser.fftSize = 256;
+                analyser.smoothingTimeConstant = 0.8;
+                source.connect(analyser);
+
+                await ctx.audioWorklet.addModule('audio-processor.js');
+                const workletNode = new AudioWorkletNode(ctx, 'pcm-processor');
+                source.connect(workletNode);
+
+                workletNode.port.onmessage = (evt) => {
+                    if (S.recording && S.ws && S.ws.readyState === WebSocket.OPEN) {
+                        S.ws.send(evt.data);
+                    }
+                };
+
+                S.audioCtx = ctx;
+                S.analyser = analyser;
+                S.data = new Uint8Array(analyser.frequencyBinCount);
+                S.mic = stream;
+                S.workletNode = workletNode;
+                return true;
+            } catch (err) {
+                showToast('Microphone access required');
+                return false;
+            }
+        }
+
+        // --- Three.js ---
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x000000, 0.012);
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 30;
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+        cntr.appendChild(renderer.domElement);
+
+        function createDotTexture() {
+            const s = 64;
+            const c = document.createElement('canvas');
+            c.width = s; c.height = s;
+            const cx = c.getContext('2d');
+            const g = cx.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
+            g.addColorStop(0, 'rgba(255,255,255,1)');
+            g.addColorStop(0.12, 'rgba(255,255,255,0.85)');
+            g.addColorStop(0.45, 'rgba(255,255,255,0.12)');
+            g.addColorStop(1, 'rgba(255,255,255,0)');
+            cx.fillStyle = g;
+            cx.fillRect(0, 0, s, s);
+            return new THREE.CanvasTexture(c);
+        }
+
+        const vtxCount = PARTICLE_COUNT;
+        const positions = new Float32Array(vtxCount * 3);
+        const colors = new Float32Array(vtxCount * 3);
+        const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+        const step = 2 / vtxCount;
+
+        for (let i = 0; i < vtxCount; i++) {
+            const y = (i * step - 1) + (step / 2);
+            const r = Math.sqrt(1 - y * y);
+            const phi = i * goldenAngle;
+            positions[i * 3]     = Math.cos(phi) * r * SPHERE_RADIUS;
+            positions[i * 3 + 1] = y * SPHERE_RADIUS;
+            positions[i * 3 + 2] = Math.sin(phi) * r * SPHERE_RADIUS;
+            const g = 0.5 + Math.random() * 0.5;
+            colors[i * 3] = g;
+            colors[i * 3 + 1] = g;
+            colors[i * 3 + 2] = g;
+        }
+
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+        const pointTexture = createDotTexture();
+        const sphereMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uAvg: { value: 0 },
+                uNoiseAudio: { value: S.visual.noiseAudio },
+                uNoiseBase: { value: THEMES[0].noiseBase },
+                uPointSize: { value: PARTICLE_SIZE },
+                uOpacity: { value: S.visual.particleOpacity },
+                uWaveEnabled: { value: 1 },
+                uTint: { value: new THREE.Color(0xffffff) },
+                uMap: { value: pointTexture }
+            },
+            vertexShader: `
+                uniform float uTime;
+                uniform float uAvg;
+                uniform float uNoiseAudio;
+                uniform float uNoiseBase;
+                uniform float uPointSize;
+                uniform float uWaveEnabled;
+                varying vec3 vColor;
+
+                float waveField(vec3 p) {
+                    float n = sin(p.x * 0.4 + uTime * 2.0) *
+                              cos(p.y * 0.3 + uTime * 1.5) *
+                              sin(p.z * 0.4 + uTime * 2.5);
+                    return (1.0 + sin(uTime * 0.8) * 0.015)
+                        + n * uNoiseBase
+                        + n * uAvg * uNoiseAudio;
+                }
+
+                void main() {
+                    vec3 p = position;
+                    if (uWaveEnabled > 0.5) {
+                        p *= waveField(position);
+                    }
+                    vec4 mvPosition = modelViewMatrix * vec4(p, 1.0);
+                    gl_Position = projectionMatrix * mvPosition;
+                    gl_PointSize = uPointSize * (340.0 / max(1.0, -mvPosition.z));
+                    vColor = color;
+                }
+            `,
+            fragmentShader: `
+                uniform sampler2D uMap;
+                uniform float uOpacity;
+                uniform vec3 uTint;
+                varying vec3 vColor;
+
+                void main() {
+                    vec4 tex = texture2D(uMap, gl_PointCoord);
+                    vec3 outColor = vColor * mix(vec3(1.0), uTint, 0.75) * tex.rgb * 1.15;
+                    float outAlpha = min(1.0, tex.a * uOpacity * 1.25);
+                    if (outAlpha < 0.01) discard;
+                    gl_FragColor = vec4(outColor, outAlpha);
+                }
+            `,
+            vertexColors: true,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false
+        });
+        const sphere = new THREE.Points(geo, sphereMaterial);
+        scene.add(sphere);
+
+        const meshGeo = new THREE.IcosahedronGeometry(SPHERE_RADIUS, 5);
+        const meshMat = new THREE.ShaderMaterial({
+            uniforms: {
+                uTime: { value: 0 },
+                uAvg: { value: 0 },
+                uNoiseAudio: { value: S.visual.noiseAudio },
+                uNoiseBase: { value: THEMES[0].noiseBase },
+                uOpacity: { value: S.visual.meshOpacity },
+                uWaveEnabled: { value: 1 },
+                uTint: { value: new THREE.Color(0xffffff) }
+            },
+            vertexShader: `
+                uniform float uTime;
+                uniform float uAvg;
+                uniform float uNoiseAudio;
+                uniform float uNoiseBase;
+                uniform float uWaveEnabled;
+
+                float waveField(vec3 p) {
+                    float n = sin(p.x * 0.4 + uTime * 2.0) *
+                              cos(p.y * 0.3 + uTime * 1.5) *
+                              sin(p.z * 0.4 + uTime * 2.5);
+                    return (1.0 + sin(uTime * 0.8) * 0.015)
+                        + n * uNoiseBase
+                        + n * uAvg * uNoiseAudio;
+                }
+
+                void main() {
+                    vec3 p = position;
+                    if (uWaveEnabled > 0.5) {
+                        p *= waveField(position);
+                    }
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform vec3 uTint;
+                uniform float uOpacity;
+
+                void main() {
+                    gl_FragColor = vec4(uTint, uOpacity);
+                }
+            `,
+            wireframe: true,
+            transparent: true,
+            depthWrite: false,
+            depthTest: false,
+            blending: THREE.AdditiveBlending
+        });
+        const meshLines = new THREE.Mesh(meshGeo, meshMat);
+        meshLines.visible = false;
+        sphere.add(meshLines);
+
+        const glowScene = new THREE.Scene();
+        const glowCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const glowMat = new THREE.ShaderMaterial({
+            uniforms: { uGlow: { value: 0 } },
+            vertexShader: `
+                varying vec2 vUv;
+                void main() {
+                    vUv = uv;
+                    gl_Position = vec4(position.xy, 0.0, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float uGlow;
+                varying vec2 vUv;
+                void main() {
+                    float d = distance(vUv, vec2(0.5));
+                    float falloff = 1.0 - smoothstep(0.0, 0.38, d);
+                    float g = falloff * uGlow;
+                    gl_FragColor = vec4(g, g, g, g);
+                }
+            `,
+            transparent: true,
+            depthTest: false,
+            depthWrite: false
+        });
+        glowScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), glowMat));
+        renderer.autoClear = false;
+
+        // --- Background System (Shadcn-style replacements) ---
+        const bgScene = new THREE.Scene();
+        const bgCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const bgVert = `varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.0,1.0); }`;
+
+        const bgUniforms = () => ({
+            uTime: { value: 0 },
+            uSpeed: { value: 0.4 },
+            uIntensity: { value: 0.3 },
+            uScale: { value: 1.5 },
+            uDensity: { value: 8.0 },
+            uTint: { value: new THREE.Color(1, 1, 1) },
+            uAccent: { value: new THREE.Color(1, 1, 1) },
+            uMouse: { value: new THREE.Vector2(0.5, 0.5) }
+        });
+
+        const flickeringGridMat = new THREE.ShaderMaterial({
+            uniforms: bgUniforms(),
+            vertexShader: bgVert,
+            fragmentShader: `
+                uniform float uTime, uSpeed, uIntensity, uDensity;
+                uniform vec3 uTint;
+                uniform vec3 uAccent;
+                varying vec2 vUv;
+                float hash(vec2 p){
+                    p = fract(p * vec2(127.1, 311.7));
+                    p += dot(p, p + 19.19);
+                    return fract(p.x * p.y);
+                }
+                void main(){
+                    float t = uTime * uSpeed;
+                    float cellSize = max(2.0, 14.0 - uDensity * 0.5);
+                    vec2 uv = gl_FragCoord.xy / cellSize;
+                    vec2 id = floor(uv);
+                    vec2 cell = fract(uv);
+
+                    float seed = hash(id);
+                    float tiny = smoothstep(0.36, 0.30, abs(cell.x - 0.5)) * smoothstep(0.36, 0.30, abs(cell.y - 0.5));
+                    float gate = step(0.34, seed);
+                    float twinkle = 0.35 + 0.65 * (sin(t * (4.0 + seed * 10.0) + seed * 8.0) * 0.5 + 0.5);
+                    float base = 0.06 * tiny;
+                    float flick = gate * tiny * twinkle;
+                    float scan = 0.97 + 0.03 * sin((vUv.y + t * 0.12) * 720.0);
+
+                    vec3 baseColor = mix(uTint, uAccent, 0.15);
+                    vec3 flickColor = mix(uTint, uAccent, 0.5 + 0.5 * seed);
+                    vec3 color = baseColor * base + flickColor * flick;
+                    gl_FragColor = vec4(color * uIntensity * scan * 1.45, 1.0);
+                }
+            `,
+            depthTest: false,
+            depthWrite: false
+        });
+
+        const gradientAnimationMat = new THREE.ShaderMaterial({
+            uniforms: bgUniforms(),
+            vertexShader: bgVert,
+            fragmentShader: `
+                uniform float uTime, uSpeed, uIntensity, uScale;
+                uniform vec3 uTint;
+                uniform vec3 uAccent;
+                uniform vec2 uMouse;
+                varying vec2 vUv;
+                void main(){
+                    vec2 uv = vUv;
+                    float t = uTime * uSpeed;
+
+                    vec2 p1 = vec2(0.5 + 0.27 * sin(t * 0.55), 0.5 + 0.25 * cos(t * 0.46));
+                    vec2 p2 = vec2(0.5 + 0.31 * cos(t * 0.37 + 1.2), 0.5 + 0.29 * sin(t * 0.41 + 0.8));
+                    vec2 p3 = vec2(0.5 + 0.24 * sin(t * 0.67 + 2.1), 0.5 + 0.26 * cos(t * 0.58 + 1.6));
+                    vec2 pm = mix(vec2(0.5), uMouse, 0.5);
+
+                    float b1 = exp(-length((uv - p1) * uScale) * 4.0);
+                    float b2 = exp(-length((uv - p2) * uScale) * 3.5);
+                    float b3 = exp(-length((uv - p3) * uScale) * 4.6);
+                    float bm = exp(-length((uv - pm) * uScale) * 5.2);
+
+                    vec3 c1 = mix(uTint, vec3(0.34, 0.68, 1.0), 0.45);
+                    vec3 c2 = mix(uAccent, vec3(1.0, 0.42, 0.68), 0.45);
+                    vec3 c3 = mix(uTint, uAccent, 0.5);
+                    vec3 cm = mix(vec3(1.0), uAccent, 0.55);
+
+                    vec3 color = c1 * b1 + c2 * b2 + c3 * b3 + cm * bm;
+                    float vignette = smoothstep(1.0, 0.1, length((uv - 0.5) * 1.7));
+                    gl_FragColor = vec4(color * vignette * uIntensity * 1.25, 1.0);
+                }
+            `,
+            depthTest: false,
+            depthWrite: false
+        });
+
+        const retroGridMat = new THREE.ShaderMaterial({
+            uniforms: bgUniforms(),
+            vertexShader: bgVert,
+            fragmentShader: `
+                uniform float uTime, uSpeed, uIntensity, uDensity;
+                uniform vec3 uTint;
+                uniform vec3 uAccent;
+                varying vec2 vUv;
+                void main(){
+                    vec2 uv = vec2(vUv.x, 1.0 - vUv.y);
+                    float t = uTime * uSpeed;
+                    float horizon = 0.42;
+
+                    if (uv.y < horizon) {
+                        float hg = exp(-abs(uv.y - horizon) * 120.0) * 0.35 * uIntensity;
+                        gl_FragColor = vec4(mix(uTint, uAccent, 0.45) * hg, 1.0);
+                        return;
+                    }
+
+                    float y = (uv.y - horizon) / max(0.001, 1.0 - horizon);
+                    float depth = 1.0 / (0.06 + y * 1.25);
+                    float gx = (uv.x - 0.5) * depth * (uDensity * 2.8);
+                    float gy = depth * 1.5 + t * 2.0;
+
+                    vec2 grid = abs(fract(vec2(gx, gy)) - 0.5);
+                    float vLine = smoothstep(0.018, 0.0, grid.x);
+                    float hLine = smoothstep(0.026, 0.0, grid.y);
+                    float line = max(vLine, hLine);
+
+                    float horizonGlow = exp(-abs(uv.y - horizon) * 55.0) * 0.9;
+                    float bottomFade = smoothstep(0.0, 0.18, y);
+                    vec3 color = mix(uTint, uAccent, 0.4);
+                    float outv = (line * bottomFade + horizonGlow * 0.7) * uIntensity;
+                    gl_FragColor = vec4(color * outv, 1.0);
+                }
+            `,
+            depthTest: false,
+            depthWrite: false
+        });
+
+        const spotlightMat = new THREE.ShaderMaterial({
+            uniforms: bgUniforms(),
+            vertexShader: bgVert,
+            fragmentShader: `
+                uniform float uTime, uSpeed, uIntensity, uScale;
+                uniform vec3 uTint;
+                uniform vec3 uAccent;
+                uniform vec2 uMouse;
+                varying vec2 vUv;
+                void main(){
+                    vec2 uv = (vUv - 0.5) * 2.0;
+                    float t = uTime * uSpeed;
+                    vec2 m = (uMouse - 0.5) * 1.2;
+                    vec2 c1 = vec2(sin(t * 0.6), cos(t * 0.7)) * (0.32 * uScale) + m * 0.45;
+                    vec2 c2 = vec2(cos(t * 0.45 + 1.2), sin(t * 0.55 + 0.8)) * (0.4 * uScale) - m * 0.35;
+                    vec2 c3 = m * 0.9;
+                    float s1 = exp(-length(uv - c1) * 4.1);
+                    float s2 = exp(-length(uv - c2) * 3.5);
+                    float s3 = exp(-length(uv - c3) * 4.8);
+                    vec3 color = uTint * s1 + uAccent * s2 + mix(uTint, uAccent, 0.5) * s3;
+                    float mask = smoothstep(1.2, 0.08, length(uv));
+                    gl_FragColor = vec4(color * mask * uIntensity, 1.0);
+                }
+            `,
+            depthTest: false,
+            depthWrite: false
+        });
+
+        const bgPlane = new THREE.PlaneGeometry(2, 2);
+        const bgFlickerMesh = new THREE.Mesh(bgPlane, flickeringGridMat);
+        const bgGradientMesh = new THREE.Mesh(bgPlane, gradientAnimationMat);
+        const bgRetroMesh = new THREE.Mesh(bgPlane, retroGridMat);
+        const bgSpotlightMesh = new THREE.Mesh(bgPlane, spotlightMat);
+        bgFlickerMesh.visible = false;
+        bgGradientMesh.visible = false;
+        bgRetroMesh.visible = false;
+        bgSpotlightMesh.visible = false;
+        bgScene.add(bgFlickerMesh);
+        bgScene.add(bgGradientMesh);
+        bgScene.add(bgRetroMesh);
+        bgScene.add(bgSpotlightMesh);
+
+        const bgMatMap = {
+            flicker: flickeringGridMat,
+            gradient: gradientAnimationMat,
+            retro: retroGridMat,
+            spotlight: spotlightMat
+        };
+
+        function normalizeBgType(type) {
+            if (type === 'nebula') return 'gradient';
+            if (type === 'grid') return 'retro';
+            if (type === 'particles') return 'flicker';
+            if (type === 'aurora') return 'gradient';
+            if (type === 'mesh') return 'retro';
+            if (type === 'ribbons') return 'gradient';
+            if (type === 'plasma') return 'gradient';
+            if (type === 'noise') return 'flicker';
+            if (type === 'warp') return 'retro';
+            if (type === 'caustics') return 'spotlight';
+            if (type === 'stars') return 'flicker';
+            return type;
+        }
+
+        let activeBgMat = null;
+
+        function setBackground(type) {
+            const normalized = normalizeBgType(type);
+            S.visual.bgType = normalized;
+            bgFlickerMesh.visible = false;
+            bgGradientMesh.visible = false;
+            bgRetroMesh.visible = false;
+            bgSpotlightMesh.visible = false;
+            activeBgMat = null;
+
+            const speedRow = document.getElementById('bg-speed-row');
+            const intensityRow = document.getElementById('bg-intensity-row');
+            const scaleRow = document.getElementById('bg-scale-row');
+            const densityRow = document.getElementById('bg-density-row');
+
+            const showControls = normalized !== 'none';
+            speedRow.style.display = showControls ? '' : 'none';
+            intensityRow.style.display = showControls ? '' : 'none';
+            scaleRow.style.display = ['gradient', 'spotlight'].includes(normalized) ? '' : 'none';
+            densityRow.style.display = ['flicker', 'retro'].includes(normalized) ? '' : 'none';
+
+            if (normalized === 'flicker') {
+                bgFlickerMesh.visible = true;
+                activeBgMat = flickeringGridMat;
+            } else if (normalized === 'gradient') {
+                bgGradientMesh.visible = true;
+                activeBgMat = gradientAnimationMat;
+            } else if (normalized === 'retro') {
+                bgRetroMesh.visible = true;
+                activeBgMat = retroGridMat;
+            } else if (normalized === 'spotlight') {
+                bgSpotlightMesh.visible = true;
+                activeBgMat = spotlightMat;
+            }
+
+            updateBgTint();
+
+            document.querySelectorAll('.bg-type-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.bg === normalized);
+            });
+        }
+
+        function updateBgTint() {
+            const c = new THREE.Color(hexToThree(S.visual.bgTint));
+            const a = new THREE.Color(hexToThree(S.visual.accentColor));
+            Object.values(bgMatMap).forEach(mat => {
+                mat.uniforms.uTint.value.copy(c);
+                if (mat.uniforms.uAccent) mat.uniforms.uAccent.value.copy(a);
+            });
+        }
+
+        function applyColors(particleHex, accentHex, bgTintHex) {
+            S.visual.particleColor = particleHex;
+            S.visual.accentColor = accentHex;
+            S.visual.bgTint = bgTintHex;
+
+            sphereMaterial.uniforms.uTint.value.setHex(hexToThree(particleHex));
+            meshMat.uniforms.uTint.value.setHex(hexToThree(accentHex));
+            document.documentElement.style.setProperty('--accent-rgb', hexToRgb(accentHex));
+
+            const cp = document.getElementById('color-particle');
+            const ca = document.getElementById('color-accent');
+            const cb = document.getElementById('color-bg-tint');
+            if (cp) cp.value = particleHex;
+            if (ca) ca.value = accentHex;
+            if (cb) cb.value = bgTintHex;
+
+            updateBgTint();
+        }
+
+        function applyPalette(paletteId) {
+            S.visual.paletteId = paletteId;
+            const pal = PALETTES.find(p => p.id === paletteId);
+            if (!pal) return;
+            applyColors(pal.particle, pal.accent, pal.bgTint);
+
+            document.querySelectorAll('.palette-swatch').forEach(sw => {
+                sw.classList.toggle('active', sw.dataset.palette === paletteId);
+            });
+        }
+
+        function buildPaletteGrid() {
+            const grid = document.getElementById('palette-grid');
+            if (!grid) return;
+            grid.innerHTML = '';
+            PALETTES.forEach(pal => {
+                const sw = document.createElement('div');
+                sw.className = 'palette-swatch';
+                sw.dataset.palette = pal.id;
+                sw.title = pal.label;
+                sw.innerHTML = `<div class="swatch-colors"><span style="background:${pal.particle}"></span><span style="background:${pal.accent}"></span><span style="background:${pal.bgTint}"></span></div>`;
+                sw.addEventListener('click', () => { applyPalette(pal.id); savePreset(); });
+                grid.appendChild(sw);
+            });
+        }
+
+        function getUserPresets() {
+            try { return JSON.parse(localStorage.getItem(USER_PRESETS_KEY) || '{}'); } catch { return {}; }
+        }
+
+        function getCurrentPresetData() {
+            return { themeIndex: S.themeIndex, visual: { ...S.visual } };
+        }
+
+        function saveNamedPreset(name) {
+            if (!name || !name.trim()) return;
+            const presets = getUserPresets();
+            presets[name.trim()] = getCurrentPresetData();
+            try { localStorage.setItem(USER_PRESETS_KEY, JSON.stringify(presets)); } catch {}
+            renderPresetList();
+        }
+
+        function loadNamedPreset(name) {
+            const presets = getUserPresets();
+            const p = presets[name];
+            if (!p) return;
+            applyTheme(p.themeIndex ?? 0);
+            restoreVisual(p.visual || p);
+            savePreset();
+        }
+
+        function deleteNamedPreset(name) {
+            const presets = getUserPresets();
+            delete presets[name];
+            try { localStorage.setItem(USER_PRESETS_KEY, JSON.stringify(presets)); } catch {}
+            renderPresetList();
+        }
+
+        function renderPresetList() {
+            const list = document.getElementById('preset-list');
+            if (!list) return;
+            list.innerHTML = '';
+            // Built-in presets
+            THEMES.forEach((theme, idx) => {
+                const item = document.createElement('div');
+                item.className = 'preset-item';
+                item.innerHTML = `<span class="preset-item-name">${theme.label}</span><span class="builtin-tag">builtin</span><button class="preset-load-btn">Cargar</button>`;
+                item.querySelector('.preset-load-btn').addEventListener('click', () => { applyTheme(idx); savePreset(); });
+                list.appendChild(item);
+            });
+            // User presets
+            const presets = getUserPresets();
+            Object.keys(presets).forEach(name => {
+                const item = document.createElement('div');
+                item.className = 'preset-item';
+                item.innerHTML = `<span class="preset-item-name">${name}</span><button class="preset-load-btn">Cargar</button><button class="preset-delete-btn">×</button>`;
+                item.querySelector('.preset-load-btn').addEventListener('click', () => loadNamedPreset(name));
+                item.querySelector('.preset-delete-btn').addEventListener('click', () => deleteNamedPreset(name));
+                list.appendChild(item);
+            });
+        }
+
+        function restoreVisual(v) {
+            if (!v) return;
+            if (v.particleSize != null) { S.visual.particleSize = v.particleSize; sphereMaterial.uniforms.uPointSize.value = v.particleSize; sizeSlider.value = v.particleSize.toFixed(2); sizeOut.textContent = v.particleSize.toFixed(2); }
+            if (v.particleOpacity != null) { S.visual.particleOpacity = v.particleOpacity; sphereMaterial.uniforms.uOpacity.value = v.particleOpacity; opacitySlider.value = v.particleOpacity.toFixed(2); opacityOut.textContent = v.particleOpacity.toFixed(2); }
+            if (v.noiseAudio != null) { S.visual.noiseAudio = v.noiseAudio; waveSlider.value = v.noiseAudio.toFixed(2); waveOut.textContent = v.noiseAudio.toFixed(2); }
+            if (v.scaleAudio != null) { S.visual.scaleAudio = v.scaleAudio; scaleSlider.value = v.scaleAudio.toFixed(2); scaleOut.textContent = v.scaleAudio.toFixed(2); }
+            if (v.glow != null) { S.visual.glow = v.glow; glowSlider.value = v.glow.toFixed(2); glowOut.textContent = v.glow.toFixed(2); document.documentElement.style.setProperty('--ambient-alpha', String(Math.max(0, v.glow * 0.95))); }
+            if (v.meshEnabled != null) { S.visual.meshEnabled = v.meshEnabled; meshToggle.checked = v.meshEnabled; meshLines.visible = v.meshEnabled; meshOpacityRow.style.display = v.meshEnabled ? '' : 'none'; }
+            if (v.meshOpacity != null) { S.visual.meshOpacity = v.meshOpacity; meshMat.uniforms.uOpacity.value = v.meshOpacity; meshOpacitySlider.value = v.meshOpacity.toFixed(2); meshOpacityOut.textContent = v.meshOpacity.toFixed(2); }
+            if (v.waveEnabled != null) { S.visual.waveEnabled = v.waveEnabled; waveToggle.checked = v.waveEnabled; }
+            if (v.spinEnabled != null) { S.visual.spinEnabled = v.spinEnabled; spinToggle.checked = v.spinEnabled; }
+            if (v.mouseEnabled != null) { S.visual.mouseEnabled = v.mouseEnabled; mouseToggle.checked = v.mouseEnabled; }
+            if (v.audioEnabled != null) { S.visual.audioEnabled = v.audioEnabled; audioToggle.checked = v.audioEnabled; }
+            if (v.bgType != null) { setBackground(v.bgType); }
+            if (v.bgSpeed != null) { S.visual.bgSpeed = v.bgSpeed; const el = document.getElementById('bg-speed-slider'); if(el){ el.value = v.bgSpeed.toFixed(2); document.getElementById('bg-speed-out').textContent = v.bgSpeed.toFixed(2); } }
+            if (v.bgIntensity != null) { S.visual.bgIntensity = v.bgIntensity; const el = document.getElementById('bg-intensity-slider'); if(el){ el.value = v.bgIntensity.toFixed(2); document.getElementById('bg-intensity-out').textContent = v.bgIntensity.toFixed(2); } }
+            if (v.bgScale != null) { S.visual.bgScale = v.bgScale; const el = document.getElementById('bg-scale-slider'); if(el){ el.value = v.bgScale.toFixed(2); document.getElementById('bg-scale-out').textContent = v.bgScale.toFixed(2); } }
+            if (v.bgDensity != null) { S.visual.bgDensity = v.bgDensity; const el = document.getElementById('bg-density-slider'); if(el){ el.value = v.bgDensity.toFixed(2); document.getElementById('bg-density-out').textContent = v.bgDensity.toFixed(2); } }
+            if (v.particleColor && v.accentColor && v.bgTint) { applyColors(v.particleColor, v.accentColor, v.bgTint); }
+            if (v.paletteId != null) {
+                S.visual.paletteId = v.paletteId;
+                document.querySelectorAll('.palette-swatch').forEach(sw => { sw.classList.toggle('active', sw.dataset.palette === v.paletteId); });
+            }
+        }
+
+        const clock = new THREE.Clock();
+        const scaleTarget = new THREE.Vector3(1, 1, 1);
+        const mouse = { x: 0, y: 0 };
+
+        function applyTheme(index) {
+            const nextIndex = ((index % THEMES.length) + THEMES.length) % THEMES.length;
+            const theme = THEMES[nextIndex];
+            S.themeIndex = nextIndex;
+
+            for (let i = 0; i < vtxCount; i++) {
+                const g = theme.minGray + Math.random() * (theme.maxGray - theme.minGray);
+                colors[i * 3] = g;
+                colors[i * 3 + 1] = g;
+                colors[i * 3 + 2] = g;
+            }
+            geo.attributes.color.needsUpdate = true;
+
+            S.visual.particleSize = theme.particleSize;
+            S.visual.particleOpacity = theme.particleOpacity;
+            S.visual.noiseAudio = theme.noiseAudio;
+            S.visual.scaleAudio = theme.scaleAudio;
+            S.visual.glow = theme.glow;
+            S.visual.spin = theme.spin;
+
+            sphereMaterial.uniforms.uPointSize.value = S.visual.particleSize;
+            sphereMaterial.uniforms.uOpacity.value = S.visual.particleOpacity;
+            sphereMaterial.uniforms.uTint.value.setHex(theme.tint);
+            meshMat.uniforms.uTint.value.setHex(theme.tint);
+            document.documentElement.style.setProperty('--accent-rgb', theme.accentRgb);
+            document.documentElement.style.setProperty('--ambient-alpha', String(theme.ambientAlpha));
+
+            sizeSlider.value = S.visual.particleSize.toFixed(2);
+            opacitySlider.value = S.visual.particleOpacity.toFixed(2);
+            waveSlider.value = S.visual.noiseAudio.toFixed(2);
+            scaleSlider.value = S.visual.scaleAudio.toFixed(2);
+            glowSlider.value = S.visual.glow.toFixed(2);
+            sizeOut.textContent = Number(sizeSlider.value).toFixed(2);
+            opacityOut.textContent = Number(opacitySlider.value).toFixed(2);
+            waveOut.textContent = Number(waveSlider.value).toFixed(2);
+            scaleOut.textContent = Number(scaleSlider.value).toFixed(2);
+            glowOut.textContent = Number(glowSlider.value).toFixed(2);
+
+            S.visual.meshEnabled = false;
+            S.visual.meshOpacity = 0.3;
+            S.visual.waveEnabled = true;
+            S.visual.spinEnabled = true;
+            S.visual.mouseEnabled = true;
+            S.visual.audioEnabled = true;
+
+            meshToggle.checked = false;
+            meshOpacitySlider.value = 0.3;
+            meshOpacityOut.textContent = "0.30";
+            meshOpacityRow.style.display = 'none';
+            meshLines.visible = false;
+            meshMat.uniforms.uOpacity.value = 0.3;
+
+            waveToggle.checked = true;
+            spinToggle.checked = true;
+            mouseToggle.checked = true;
+            audioToggle.checked = true;
+
+            // Reset background
+            S.visual.bgType = 'none';
+            S.visual.bgSpeed = 0.4;
+            S.visual.bgIntensity = 0.3;
+            S.visual.bgScale = 1.5;
+            S.visual.bgDensity = 8.0;
+            setBackground('none');
+            document.getElementById('bg-speed-slider').value = '0.40';
+            document.getElementById('bg-speed-out').textContent = '0.40';
+            document.getElementById('bg-intensity-slider').value = '0.30';
+            document.getElementById('bg-intensity-out').textContent = '0.30';
+            document.getElementById('bg-scale-slider').value = '1.50';
+            document.getElementById('bg-scale-out').textContent = '1.50';
+            document.getElementById('bg-density-slider').value = '8.00';
+            document.getElementById('bg-density-out').textContent = '8.00';
+
+            // Reset colors to theme defaults
+            S.visual.paletteId = null;
+            S.visual.particleColor = threeToHex(theme.tint);
+            S.visual.accentColor = '#' + theme.accentRgb.split(',').map(v => parseInt(v.trim(), 10).toString(16).padStart(2, '0')).join('');
+            S.visual.bgTint = '#ffffff';
+            document.getElementById('color-particle').value = S.visual.particleColor;
+            document.getElementById('color-accent').value = S.visual.accentColor;
+            document.getElementById('color-bg-tint').value = S.visual.bgTint;
+            document.querySelectorAll('.palette-swatch').forEach(sw => { sw.classList.remove('active'); });
+
+            themeBtn.textContent = `Tema: ${theme.label}`;
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const t = clock.getElapsedTime();
+
+            let bass = 0, avg = 0;
+            if (S.recording && S.analyser && S.visual.audioEnabled) {
+                S.analyser.getByteFrequencyData(S.data);
+                for (let i = 0; i < 10; i++) bass += S.data[i];
+                bass /= 10;
+                for (let i = 0; i < S.data.length; i++) avg += S.data[i];
+                avg /= S.data.length;
+            }
+
+            S.sBass += (bass / 255 - S.sBass) * 0.1;
+            S.sAvg += (avg / 255 - S.sAvg) * 0.1;
+
+            if (S.visual.spinEnabled) {
+                sphere.rotation.y += S.visual.spin;
+            }
+            if (S.visual.mouseEnabled) {
+                sphere.rotation.x += (mouse.y * 0.04 - sphere.rotation.x) * 0.04;
+                sphere.rotation.z += (mouse.x * 0.04 - sphere.rotation.z) * 0.04;
+            }
+
+            const activeTheme = THEMES[S.themeIndex];
+            const sc = 1 + S.sBass * S.visual.scaleAudio;
+            scaleTarget.set(sc, sc, sc);
+            sphere.scale.lerp(scaleTarget, 0.05);
+
+            sphereMaterial.uniforms.uTime.value = t;
+            sphereMaterial.uniforms.uAvg.value = S.sAvg;
+            sphereMaterial.uniforms.uNoiseAudio.value = S.visual.noiseAudio;
+            sphereMaterial.uniforms.uNoiseBase.value = activeTheme.noiseBase;
+            sphereMaterial.uniforms.uWaveEnabled.value = S.visual.waveEnabled ? 1 : 0;
+
+            meshMat.uniforms.uTime.value = t;
+            meshMat.uniforms.uAvg.value = S.sAvg;
+            meshMat.uniforms.uNoiseAudio.value = S.visual.noiseAudio;
+            meshMat.uniforms.uNoiseBase.value = activeTheme.noiseBase;
+            meshMat.uniforms.uWaveEnabled.value = S.visual.waveEnabled ? 1 : 0;
+
+            const glowTarget = S.recording ? S.visual.glow : 0;
+            glowMat.uniforms.uGlow.value += (glowTarget - glowMat.uniforms.uGlow.value) * 0.025;
+
+            // Update active background shader uniforms
+            if (activeBgMat) {
+                activeBgMat.uniforms.uTime.value = t;
+                activeBgMat.uniforms.uSpeed.value = S.visual.bgSpeed;
+                activeBgMat.uniforms.uIntensity.value = S.visual.bgIntensity;
+                if (activeBgMat.uniforms.uScale) activeBgMat.uniforms.uScale.value = S.visual.bgScale;
+                if (activeBgMat.uniforms.uDensity) activeBgMat.uniforms.uDensity.value = S.visual.bgDensity;
+                if (activeBgMat.uniforms.uMouse) {
+                    activeBgMat.uniforms.uMouse.value.set(mouse.x * 0.5 + 0.5, mouse.y * 0.5 + 0.5);
+                }
+            }
+
+            renderer.clear();
+            if (activeBgMat) {
+                renderer.render(bgScene, bgCam);
+            }
+            if (glowMat.uniforms.uGlow.value > 0.001) {
+                renderer.render(glowScene, glowCam);
+            }
+            renderer.render(scene, camera);
+        }
+
+        // --- FLIP message animation (identical to approved demo) ---
+        function pushMsg(msg) {
+            const rects = S.msgs.map(el => el.getBoundingClientRect());
+
+            const el = document.createElement('div');
+            el.className = 'message';
+            el.innerHTML = `<div class="message-meta">${msg.t} · ${msg.s}</div><div class="message-text">${msg.x}</div>`;
+            transcription.prepend(el);
+            S.msgs.unshift(el);
+
+            const overflow = [];
+            while (S.msgs.length > MAX_MESSAGES) {
+                overflow.push(S.msgs.pop());
+            }
+
+            const allExisting = [...S.msgs.slice(1), ...overflow];
+            allExisting.forEach((m, i) => {
+                const dy = rects[i].top - m.getBoundingClientRect().top;
+                if (Math.abs(dy) > 0.5) {
+                    m.style.transition = 'none';
+                    m.style.transform = `translateY(${dy}px)`;
+                    void m.offsetHeight;
+                }
+            });
+
+            S.msgs.slice(1).forEach(m => {
+                m.style.transition = 'transform 0.7s cubic-bezier(0.16, 1, 0.3, 1)';
+                m.style.transform = 'translateY(0)';
+                setTimeout(() => { m.style.transition = ''; m.style.transform = ''; }, 750);
+            });
+
+            overflow.forEach(old => {
+                old.style.transition = 'opacity 0.85s cubic-bezier(0.16, 1, 0.3, 1), filter 0.75s cubic-bezier(0.16, 1, 0.3, 1)';
+                old.style.opacity = '0';
+                old.style.filter = 'blur(2px)';
+                setTimeout(() => old.remove(), 900);
+            });
+
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => el.classList.add('visible'));
+            });
+
+            S.totalMsgs++;
+        }
+
+        function clearMessages() {
+            S.totalMsgs = 0;
+            S.titleShown = false;
+            titleEl.classList.remove('visible');
+            removePartial();
+            const copy = [...S.msgs].reverse();
+            copy.forEach((el, i) => {
+                setTimeout(() => {
+                    el.style.transition = '';
+                    el.style.transform = '';
+                    el.classList.remove('visible');
+                    el.classList.add('fading');
+                    setTimeout(() => {
+                        el.remove();
+                    }, 900);
+                }, i * 150);
+            });
+            S.msgs = [];
+        }
+
+        // --- Toggle recording ---
+        async function toggle() {
+            if (!S.recording) {
+                try {
+                    if (!S.ws || !S.backendReady) {
+                        await connectWS(4, 180);
+                    }
+                } catch {
+                    showToast('Cannot connect to backend');
+                    return;
+                }
+
+                if (await initAudio()) {
+                    clearMessages();
+                    savePathEl.classList.remove('visible');
+                    S.ws.send(JSON.stringify({ type: 'session.start' }));
+                    S.recording = true;
+                    recordBtn.classList.add('recording');
+                    S.startTime = Date.now();
+                    S.timerIv = setInterval(() => {
+                        const s = Math.floor((Date.now() - S.startTime) / 1000);
+                        timerEl.textContent = `${(s / 60 | 0).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
+                    }, 1000);
+                }
+            } else {
+                if (S.ws && S.ws.readyState === WebSocket.OPEN) {
+                    S.ws.send(JSON.stringify({ type: 'session.stop' }));
+                }
+                S.recording = false;
+                recordBtn.classList.remove('recording');
+                clearInterval(S.timerIv);
+
+                if (S.audioCtx) {
+                    S.audioCtx.suspend();
+                }
+
+                setTimeout(() => { timerEl.textContent = '00:00'; }, 800);
+            }
+        }
+
+        recordBtn.addEventListener('click', toggle);
+        recordBtn.disabled = true;
+        themeBtn.addEventListener('click', () => {
+            applyTheme(S.themeIndex + 1);
+            savePreset();
+        });
+
+        sizeSlider.addEventListener('input', () => {
+            S.visual.particleSize = Number(sizeSlider.value);
+            sphereMaterial.uniforms.uPointSize.value = S.visual.particleSize;
+            sizeOut.textContent = S.visual.particleSize.toFixed(2);
+            savePreset();
+        });
+
+        opacitySlider.addEventListener('input', () => {
+            S.visual.particleOpacity = Number(opacitySlider.value);
+            sphereMaterial.uniforms.uOpacity.value = S.visual.particleOpacity;
+            opacityOut.textContent = S.visual.particleOpacity.toFixed(2);
+            savePreset();
+        });
+
+        waveSlider.addEventListener('input', () => {
+            S.visual.noiseAudio = Number(waveSlider.value);
+            waveOut.textContent = S.visual.noiseAudio.toFixed(2);
+            savePreset();
+        });
+
+        scaleSlider.addEventListener('input', () => {
+            S.visual.scaleAudio = Number(scaleSlider.value);
+            scaleOut.textContent = S.visual.scaleAudio.toFixed(2);
+            savePreset();
+        });
+
+        glowSlider.addEventListener('input', () => {
+            S.visual.glow = Number(glowSlider.value);
+            glowOut.textContent = S.visual.glow.toFixed(2);
+            document.documentElement.style.setProperty('--ambient-alpha', String(Math.max(0, S.visual.glow * 0.95)));
+            savePreset();
+        });
+
+        // --- Toggle event listeners ---
+        meshToggle.addEventListener('change', () => {
+            S.visual.meshEnabled = meshToggle.checked;
+            meshLines.visible = meshToggle.checked;
+            meshOpacityRow.style.display = meshToggle.checked ? '' : 'none';
+            savePreset();
+        });
+
+        meshOpacitySlider.addEventListener('input', () => {
+            S.visual.meshOpacity = Number(meshOpacitySlider.value);
+            meshMat.uniforms.uOpacity.value = S.visual.meshOpacity;
+            meshOpacityOut.textContent = S.visual.meshOpacity.toFixed(2);
+            savePreset();
+        });
+
+        waveToggle.addEventListener('change', () => {
+            S.visual.waveEnabled = waveToggle.checked;
+            savePreset();
+        });
+
+        spinToggle.addEventListener('change', () => {
+            S.visual.spinEnabled = spinToggle.checked;
+            savePreset();
+        });
+
+        mouseToggle.addEventListener('change', () => {
+            S.visual.mouseEnabled = mouseToggle.checked;
+            savePreset();
+        });
+
+        audioToggle.addEventListener('change', () => {
+            S.visual.audioEnabled = audioToggle.checked;
+            savePreset();
+        });
+
+        // --- Panel open/close ---
+        closePanelBtn.addEventListener('click', () => {
+            visualPanel.classList.add('collapsed');
+            openPanelBtn.classList.remove('hidden');
+        });
+
+        openPanelBtn.addEventListener('click', () => {
+            visualPanel.classList.remove('collapsed');
+            openPanelBtn.classList.add('hidden');
+        });
+
+        // --- Background controls ---
+        document.querySelectorAll('.bg-type-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                setBackground(btn.dataset.bg);
+                savePreset();
+            });
+        });
+
+        document.getElementById('bg-speed-slider').addEventListener('input', function() {
+            S.visual.bgSpeed = Number(this.value);
+            document.getElementById('bg-speed-out').textContent = S.visual.bgSpeed.toFixed(2);
+            savePreset();
+        });
+
+        document.getElementById('bg-intensity-slider').addEventListener('input', function() {
+            S.visual.bgIntensity = Number(this.value);
+            document.getElementById('bg-intensity-out').textContent = S.visual.bgIntensity.toFixed(2);
+            savePreset();
+        });
+
+        document.getElementById('bg-scale-slider').addEventListener('input', function() {
+            S.visual.bgScale = Number(this.value);
+            document.getElementById('bg-scale-out').textContent = S.visual.bgScale.toFixed(2);
+            savePreset();
+        });
+
+        document.getElementById('bg-density-slider').addEventListener('input', function() {
+            S.visual.bgDensity = Number(this.value);
+            document.getElementById('bg-density-out').textContent = S.visual.bgDensity.toFixed(2);
+            savePreset();
+        });
+
+        // --- Color pickers ---
+        document.getElementById('color-particle').addEventListener('input', function() {
+            S.visual.paletteId = null;
+            document.querySelectorAll('.palette-swatch').forEach(sw => { sw.classList.remove('active'); });
+            applyColors(this.value, S.visual.accentColor, S.visual.bgTint);
+            savePreset();
+        });
+
+        document.getElementById('color-accent').addEventListener('input', function() {
+            S.visual.paletteId = null;
+            document.querySelectorAll('.palette-swatch').forEach(sw => { sw.classList.remove('active'); });
+            applyColors(S.visual.particleColor, this.value, S.visual.bgTint);
+            savePreset();
+        });
+
+        document.getElementById('color-bg-tint').addEventListener('input', function() {
+            S.visual.paletteId = null;
+            document.querySelectorAll('.palette-swatch').forEach(sw => { sw.classList.remove('active'); });
+            applyColors(S.visual.particleColor, S.visual.accentColor, this.value);
+            savePreset();
+        });
+
+        // --- Preset save ---
+        document.getElementById('preset-save-btn').addEventListener('click', () => {
+            const input = document.getElementById('preset-name-input');
+            const name = input.value.trim();
+            if (!name) return;
+            saveNamedPreset(name);
+            input.value = '';
+        });
+
+        // --- Preset Persistence ---
+        const PRESET_KEY = 'whisper-meetings-preset';
+
+        function savePreset() {
+            const preset = { themeIndex: S.themeIndex, visual: { ...S.visual } };
+            try { localStorage.setItem(PRESET_KEY, JSON.stringify(preset)); } catch {}
+        }
+
+        function loadPreset() {
+            let raw;
+            try { raw = localStorage.getItem(PRESET_KEY); } catch {}
+            if (!raw) { applyTheme(0); renderPresetList(); return; }
+            try {
+                const p = JSON.parse(raw);
+                applyTheme(p.themeIndex ?? 0);
+                restoreVisual(p.visual || p);
+            } catch { applyTheme(0); }
+            renderPresetList();
+        }
+
+        function ensureWSConnected() {
+            if (S.ws || wsBootstrapping) return;
+            wsBootstrapping = true;
+            connectWS().catch(() => {}).finally(() => {
+                wsBootstrapping = false;
+            });
+        }
+
+        ensureWSConnected();
+        setInterval(() => {
+            if (!S.recording) {
+                ensureWSConnected();
+            }
+        }, 2000);
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        document.addEventListener('mousemove', e => {
+            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+        });
+
+        buildPaletteGrid();
+        animate();
+        loadPreset();
+
+        window.addEventListener('beforeunload', () => {
+            if (S.mic) {
+                S.mic.getTracks().forEach((track) => {
+                    track.stop();
+                });
+            }
+            if (S.audioCtx) {
+                S.audioCtx.close();
+            }
+        });
+    </script>
+</body>
+</html>
