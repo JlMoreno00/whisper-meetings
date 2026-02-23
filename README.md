@@ -1,4 +1,4 @@
-# whisper-meetings
+# Nøva
 
 Local-first meeting transcription powered by [mlx-whisper](https://github.com/ml-explore/mlx-examples)
 on Apple Silicon. No cloud, no subscriptions, no data leaves your machine.
@@ -101,6 +101,7 @@ When you stop a recording the full session (audio WAV + transcript JSON) is save
 - 3D particle sphere that reacts to microphone audio (Three.js)
 - Multiple visual themes and a control panel for particle size, opacity, glow, backgrounds, color palettes, and custom presets
 - Session persistence — audio and transcript saved automatically
+- Drag-and-drop file transcription
 
 ## WebSocket server
 
@@ -140,84 +141,6 @@ The WebSocket protocol uses JSON control messages and raw binary PCM frames:
 
 A standalone HTML page that showcases the 3D visualization with mock transcript data.
 No backend required — open `demo/index.html` in a browser.
-
-## JSON output schema
-
-```json
-{
-  "metadata": {
-    "file": "meeting.mp3",
-    "file_size_bytes": 15234567,
-    "duration_seconds": 3600.5,
-    "language": "es",
-    "model": "mlx-community/whisper-large-v3-turbo",
-    "transcription_time_seconds": 245.3,
-    "created_at": "2026-02-19T10:30:00Z"
-  },
-  "segments": [
-    {
-      "id": 0,
-      "start": 0.0,
-      "end": 5.2,
-      "text": "Buenos dias a todos.",
-      "avg_logprob": -0.234,
-      "no_speech_prob": 0.012,
-      "words": [
-        { "word": "Buenos", "start": 0.0, "end": 0.4, "confidence": 0.92 },
-        { "word": "dias",   "start": 0.5, "end": 0.9, "confidence": 0.87 }
-      ]
-    }
-  ]
-}
-```
-
-The `words` array is only present when `--word-timestamps` is passed to the CLI.
-The `confidence` field maps to mlx-whisper's internal `probability` value.
-
-## Environment variables
-
-| Variable | Default | Description |
-|---|---|---|
-| `WS_PORT` | `8766` | WebSocket server port |
-| `WHISPER_MEETINGS_OUTPUT_DIR` | `~/Documents/WhisperMeetings` | Directory for saved sessions |
-
-## Project structure
-
-```
-whisper-meetings/
-├── src/whisper_meetings/
-│   ├── cli.py            # Click CLI entry point
-│   ├── transcriber.py    # File transcription pipeline
-│   ├── server.py         # WebSocket streaming server
-│   ├── streaming.py      # VAD segmenter + real-time transcription
-│   ├── mapper.py         # Raw mlx-whisper output → domain schema
-│   ├── schema.py         # Dataclasses for JSON output
-│   └── validators.py     # Audio file validation, ffmpeg checks
-├── electron/
-│   ├── main.js           # Electron main process + Python lifecycle
-│   ├── preload.js        # Context bridge (minimal surface)
-│   └── renderer/         # Frontend (Three.js, AudioWorklet)
-├── demo/
-│   └── index.html        # Standalone visualization demo
-├── tests/                # Fully mocked test suite
-├── pyproject.toml
-└── uv.lock
-```
-
-## Development
-
-```bash
-# Install all dependencies (including dev)
-uv sync
-
-# Run the test suite
-uv run pytest -v
-
-# Run a specific test file
-uv run pytest tests/test_streaming.py -v
-```
-
-All tests are fully mocked — no model download or audio processing during testing.
 
 ## Privacy
 

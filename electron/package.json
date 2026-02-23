@@ -1,5 +1,5 @@
 {
-  "name": "whisper-meetings",
+  "name": "nova",
   "version": "0.1.0",
   "description": "Real-time meeting transcription with 3D audio visualization",
   "main": "main.js",
@@ -13,8 +13,8 @@
     "electron-builder": "^24.13.3"
   },
   "build": {
-    "appId": "com.whispermeetings.app",
-    "productName": "Whisper Meetings",
+    "appId": "com.nova.app",
+    "productName": "Nøva",
     "mac": {
       "target": [
         "dir"
