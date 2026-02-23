@@ -1,7 +1,11 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, screen } = require('electron');
 const path = require('path');
-const { spawn } = require('child_process');
+const { spawn, execFile } = require('child_process');
 const net = require('net');
+
+// Prevent crash on broken stdout/stderr pipe (EIO)
+process.stdout.on('error', () => {});
+process.stderr.on('error', () => {});
 
 let mainWindow = null;
 let pythonProcess = null;
@@ -18,7 +22,7 @@ function createWindow() {
     minHeight: 700,
     backgroundColor: '#000000',
     titleBarStyle: 'hiddenInset',
-    frame: process.platform !== 'darwin',
+    trafficLightPosition: { x: 12, y: 12 },
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -198,6 +202,126 @@ function stopPythonBackend() {
 }
 
 ipcMain.handle('get-ws-port', () => PYTHON_WS_PORT);
+
+const SUPPORTED_AUDIO_EXTS = new Set(['.mp3', '.wav', '.m4a', '.mp4', '.flac', '.ogg', '.webm']);
+
+function getAudioDuration(filePath) {
+  return new Promise((resolve) => {
+    execFile('ffprobe', [
+      '-v', 'quiet',
+      '-show_entries', 'format=duration',
+      '-of', 'csv=p=0',
+      filePath,
+    ], (err, stdout) => {
+      if (err) return resolve(0);
+      const secs = parseFloat(stdout.trim());
+      resolve(Number.isFinite(secs) ? secs : 0);
+    });
+  });
+}
+
+let activeTranscribeProc = null;
+
+ipcMain.handle('cancel-transcription', () => {
+  if (activeTranscribeProc) {
+    activeTranscribeProc.kill('SIGTERM');
+    activeTranscribeProc = null;
+    return { cancelled: true };
+  }
+  return { cancelled: false };
+});
+
+ipcMain.handle('transcribe-file', async (event, filePath) => {
+  const ext = path.extname(filePath).toLowerCase();
+  if (!SUPPORTED_AUDIO_EXTS.has(ext)) {
+    return { success: false, error: `Formato no soportado: ${ext}` };
+  }
+
+  const durationSecs = await getAudioDuration(filePath);
+  event.sender.send('transcribe-progress', { phase: 'started', durationSecs });
+
+  const pythonPath = findPythonPath();
+  const projectRoot = path.join(__dirname, '..');
+  const pyModulePath = app.isPackaged
+    ? path.join(process.resourcesPath, 'src')
+    : path.join(projectRoot, 'src');
+
+  const inheritedPythonPath = process.env.PYTHONPATH;
+  const pythonPathEnv = inheritedPythonPath
+    ? `${pyModulePath}:${inheritedPythonPath}`
+    : pyModulePath;
+
+  return new Promise((resolve) => {
+    const args = ['-u', '-m', 'whisper_meetings.cli', filePath];
+    const proc = spawn(pythonPath, args, {
+      cwd: app.isPackaged ? process.resourcesPath : projectRoot,
+      env: {
+        ...process.env,
+        PYTHONPATH: pythonPathEnv,
+        PYTHONUNBUFFERED: '1',
+      },
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    activeTranscribeProc = proc;
+    let stderr = '';
+    let outputPath = '';
+
+    proc.stderr.on('data', (data) => {
+      const msg = data.toString();
+      stderr += msg;
+      // Parse status messages for output path
+      const match = msg.match(/Output saved to (.+)/);
+      if (match) {
+        outputPath = match[1].trim();
+      }
+    });
+
+    proc.on('error', (err) => {
+      activeTranscribeProc = null;
+      event.sender.send('transcribe-progress', { phase: 'error' });
+      resolve({ success: false, error: err.message });
+    });
+
+    proc.on('exit', (code, signal) => {
+      activeTranscribeProc = null;
+      if (signal === 'SIGTERM') {
+        event.sender.send('transcribe-progress', { phase: 'cancelled' });
+        resolve({ success: false, error: 'cancelled' });
+        return;
+      }
+      event.sender.send('transcribe-progress', { phase: 'done' });
+      if (code === 0) {
+        resolve({ success: true, outputPath });
+      } else {
+        // Extract meaningful error from stderr
+        const lines = stderr.trim().split('\n');
+        const errorLine = lines.find((l) => l.startsWith('Error:')) || lines[lines.length - 1] || 'Transcription failed';
+        resolve({ success: false, error: errorLine });
+      }
+    });
+  });
+});
+
+
+// --- Programmatic window dragging (bypass app-region CSS issues) ---
+let dragOffset = null;
+
+ipcMain.on('window-start-drag', () => {
+  if (!mainWindow) return;
+  const cursor = screen.getCursorScreenPoint();
+  const [winX, winY] = mainWindow.getPosition();
+  dragOffset = { x: cursor.x - winX, y: cursor.y - winY };
+});
+
+ipcMain.on('window-drag', (_event, screenX, screenY) => {
+  if (!mainWindow || !dragOffset) return;
+  mainWindow.setPosition(screenX - dragOffset.x, screenY - dragOffset.y);
+});
+
+ipcMain.on('window-end-drag', () => {
+  dragOffset = null;
+});
 
 app.whenReady().then(async () => {
   try {

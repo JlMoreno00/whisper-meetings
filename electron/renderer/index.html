@@ -22,18 +22,17 @@
         * { box-sizing: border-box; margin: 0; padding: 0; }
 
         body {
+            margin: 0;
             background: var(--bg);
             color: var(--text);
             font-family: var(--font-sans);
             height: 100vh;
             width: 100vw;
             overflow: hidden;
-            -webkit-app-region: drag;
         }
 
-        button, #canvas-container, #open-panel-btn { -webkit-app-region: no-drag; }
 
-        #canvas-container {
+        #canvas-container, #canvas-container canvas {
             position: absolute;
             inset: 0;
             z-index: 1;
@@ -71,16 +70,6 @@
             display: none;
         }
 
-        #drag-region {
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 36px;
-            z-index: 35;
-            -webkit-app-region: drag;
-            pointer-events: auto;
-        }
 
         #transcription {
             position: absolute;
@@ -338,7 +327,7 @@
             padding: 12px;
             display: grid;
             gap: 8px;
-            -webkit-app-region: no-drag;
+
         }
 
         #visual-panel h3 {
@@ -452,6 +441,7 @@
         #close-panel-btn:hover { color: white; }
 
         .panel-content {
+            flex: 1;
             overflow-y: auto;
             min-height: 0;
             padding: 12px;
@@ -460,15 +450,12 @@
             gap: 8px;
         }
 
-        /* Scrollbar styling */
-        .panel-content::-webkit-scrollbar { width: 4px; }
-        .panel-content::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.02); }
-        .panel-content::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); border-radius: 2px; }
+        .panel-content::-webkit-scrollbar { display: none; }
+        .panel-content { -ms-overflow-style: none; scrollbar-width: none; }
 
         details {
             background: rgba(255, 255, 255, 0.03);
             border-radius: 8px;
-            overflow: hidden;
             border: 1px solid rgba(255, 255, 255, 0.05);
         }
 
@@ -630,7 +617,7 @@
         .preset-name-input:focus { border-color: rgba(var(--accent-rgb), 0.5); }
         .preset-name-input::placeholder { color: rgba(255, 255, 255, 0.25); }
 
-        .preset-save-btn, .preset-load-btn, .preset-delete-btn {
+        .preset-save-btn, .preset-load-btn, .preset-update-btn, .preset-delete-btn {
             font-family: var(--font-mono);
             font-size: 9px;
             border-radius: 6px;
@@ -692,6 +679,15 @@
         }
 
         .preset-load-btn:hover { background: rgba(255, 255, 255, 0.1); color: white; }
+
+        .preset-update-btn {
+            background: rgba(var(--accent-rgb), 0.08);
+            color: rgba(var(--accent-rgb), 0.6);
+            border-color: rgba(var(--accent-rgb), 0.15);
+            padding: 5px 7px;
+        }
+
+        .preset-update-btn:hover { background: rgba(var(--accent-rgb), 0.15); color: rgba(var(--accent-rgb), 0.9); }
 
         .preset-delete-btn {
             background: rgba(255, 59, 48, 0.08);
@@ -800,6 +796,223 @@
             pointer-events: none;
             transform: scale(0.8);
         }
+
+        /* --- Drop Overlay --- */
+        #drop-overlay {
+            position: absolute;
+            inset: 0;
+            z-index: 50;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            background: rgba(0, 0, 0, 0.82);
+            backdrop-filter: blur(16px);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+
+        }
+
+        #drop-overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .drop-ring {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            border: 2px dashed rgba(255, 255, 255, 0.25);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: border-color 0.3s ease, transform 0.3s ease;
+        }
+
+        #drop-overlay.active .drop-ring {
+            animation: drop-breathe 1.8s infinite ease-in-out;
+        }
+
+        @keyframes drop-breathe {
+            0%, 100% { transform: scale(1); border-color: rgba(255, 255, 255, 0.25); }
+            50% { transform: scale(1.08); border-color: rgba(255, 255, 255, 0.5); }
+        }
+
+        .drop-ring svg {
+            width: 32px;
+            height: 32px;
+            fill: rgba(255, 255, 255, 0.5);
+        }
+
+        .drop-label {
+            font-family: var(--font-mono);
+            font-size: 12px;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .drop-hint {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            color: rgba(255, 255, 255, 0.2);
+        }
+
+        /* --- Transcription Status Banner --- */
+        #file-status {
+            position: absolute;
+            top: 48px;
+            left: 50%;
+            transform: translateX(-50%) translateY(-8px);
+            z-index: 40;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 20px;
+            border-radius: 12px;
+            background: rgba(12, 12, 14, 0.82);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.7);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.35s ease, transform 0.35s ease;
+
+        }
+
+        #file-status.visible {
+            opacity: 1;
+            pointer-events: auto;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        #file-status.success {
+            border-color: rgba(175, 238, 190, 0.3);
+        }
+
+        #file-status.error {
+            border-color: rgba(255, 99, 99, 0.3);
+        }
+
+        .status-spinner {
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(255, 255, 255, 0.15);
+            border-top-color: rgba(255, 255, 255, 0.6);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .status-icon svg {
+            width: 14px;
+            height: 14px;
+            stroke-width: 2;
+            fill: none;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        #file-status-text {
+            max-width: min(60vw, 500px);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        #file-status-close {
+            background: none;
+            border: none;
+            color: rgba(255, 255, 255, 0.3);
+            font-size: 16px;
+            cursor: pointer;
+            padding: 0 0 0 6px;
+            line-height: 1;
+            transition: color 0.2s;
+        }
+
+        #file-status-close:hover { color: white; }
+
+        #file-status-cancel {
+            background: none;
+            border: 1px solid rgba(255, 59, 48, 0.2);
+            border-radius: 6px;
+            color: rgba(255, 59, 48, 0.6);
+            font-family: var(--font-mono);
+            font-size: 9px;
+            letter-spacing: 0.03em;
+            padding: 3px 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        #file-status-cancel:hover {
+            background: rgba(255, 59, 48, 0.1);
+            color: rgba(255, 59, 48, 0.9);
+            border-color: rgba(255, 59, 48, 0.4);
+        }
+
+        .status-progress-wrap {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            border-radius: 0 0 12px 12px;
+            overflow: hidden;
+            background: rgba(255, 255, 255, 0.04);
+        }
+
+        .status-progress-bar {
+            height: 100%;
+            width: 0%;
+            background: rgba(255, 255, 255, 0.35);
+            border-radius: 0 0 12px 12px;
+            transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        #file-status.success .status-progress-bar {
+            background: rgba(175, 238, 190, 0.5);
+        }
+
+        .status-pct {
+            font-variant-numeric: tabular-nums;
+            min-width: 32px;
+            text-align: right;
+            color: rgba(255, 255, 255, 0.4);
+        }
+
+        .status-eta {
+            position: absolute;
+            bottom: calc(100% + 8px);
+            left: 50%;
+            transform: translateX(-50%) translateY(4px);
+            padding: 5px 10px;
+            border-radius: 8px;
+            background: rgba(12, 12, 14, 0.92);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(8px);
+            font-family: var(--font-mono);
+            font-size: 10px;
+            font-variant-numeric: tabular-nums;
+            color: rgba(255, 255, 255, 0.5);
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease, transform 0.2s ease;
+        }
+
+        #file-status:hover .status-eta.has-data {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+        }
     </style>
 
     <script type="importmap">
@@ -817,7 +1030,7 @@
     <div id="sphere-shadow"></div>
     <div id="controls-shadow"></div>
     <div id="transcription-shadow"></div>
-    <div id="drag-region"></div>
+
     <div id="meeting-title"></div>
     <div id="transcription"></div>
 
@@ -830,21 +1043,39 @@
             <div class="icon-stop"></div>
         </button>
         <div id="timer">00:00</div>
-        <div id="backend-status">Conectando backend...</div>
+        <div id="backend-status" style="display:none">Conectando backend...</div>
         <button id="theme-btn" type="button">Tema: Sobrio</button>
         <div id="save-path"></div>
     </div>
 
+    <div id="drop-overlay">
+        <div class="drop-ring">
+            <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z"/><polyline points="14 2 14 8 20 8" fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="1.5"/><line x1="12" y1="18" x2="12" y2="12" stroke="rgba(255,255,255,0.5)" stroke-width="1.5"/><polyline points="9 15 12 12 15 15" fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="1.5"/></svg>
+        </div>
+        <span class="drop-label">Soltar archivo de audio</span>
+        <span class="drop-hint">mp3 · wav · m4a · mp4 · flac · ogg · webm</span>
+    </div>
+
+    <div id="file-status">
+        <div id="file-status-icon"><div class="status-spinner"></div></div>
+        <span id="file-status-text"></span>
+        <span id="file-status-pct" class="status-pct"></span>
+        <button id="file-status-cancel" style="display:none">Cancelar</button>
+        <button id="file-status-close" aria-label="Cerrar">×</button>
+        <div class="status-progress-wrap"><div id="file-progress-bar" class="status-progress-bar"></div></div>
+        <div id="file-status-eta" class="status-eta"></div>
+    </div>
+
     <div id="toast"></div>
 
-    <button id="open-panel-btn" aria-label="Open settings" class="hidden">
+    <button id="open-panel-btn" aria-label="Open settings">
         <svg viewBox="0 0 24 24" aria-hidden="true">
             <circle cx="12" cy="12" r="3.1"></circle>
             <path d="M12 3.2v2.1M12 18.7v2.1M3.2 12h2.1M18.7 12h2.1M5.8 5.8l1.5 1.5M16.7 16.7l1.5 1.5M18.2 5.8l-1.5 1.5M7.3 16.7l-1.5 1.5"></path>
         </svg>
     </button>
 
-    <aside id="visual-panel">
+    <aside id="visual-panel" class="collapsed">
         <div class="panel-header">
             <h3>Control Visual</h3>
             <button id="close-panel-btn" aria-label="Close panel">×</button>
@@ -1837,6 +2068,10 @@
             if (!p) return;
             applyTheme(p.themeIndex ?? 0);
             restoreVisual(p.visual || p);
+            themeBtn.textContent = `Tema: ${name}`;
+            const entries = getAllThemeEntries();
+            const idx = entries.findIndex(e => e.type === 'user' && e.name === name);
+            if (idx >= 0) quickThemeIdx = idx;
             savePreset();
         }
 
@@ -1864,8 +2099,9 @@
             Object.keys(presets).forEach(name => {
                 const item = document.createElement('div');
                 item.className = 'preset-item';
-                item.innerHTML = `<span class="preset-item-name">${name}</span><button class="preset-load-btn">Cargar</button><button class="preset-delete-btn">×</button>`;
+                item.innerHTML = `<span class="preset-item-name">${name}</span><button class="preset-load-btn">Cargar</button><button class="preset-update-btn">↻</button><button class="preset-delete-btn">×</button>`;
                 item.querySelector('.preset-load-btn').addEventListener('click', () => loadNamedPreset(name));
+                item.querySelector('.preset-update-btn').addEventListener('click', () => { saveNamedPreset(name); showToast(`Preset "${name}" actualizado`, 2000); });
                 item.querySelector('.preset-delete-btn').addEventListener('click', () => deleteNamedPreset(name));
                 list.appendChild(item);
             });
@@ -1984,6 +2220,7 @@
             document.querySelectorAll('.palette-swatch').forEach(sw => { sw.classList.remove('active'); });
 
             themeBtn.textContent = `Tema: ${theme.label}`;
+            quickThemeIdx = nextIndex;
         }
 
         function animate() {
@@ -2159,8 +2396,28 @@
 
         recordBtn.addEventListener('click', toggle);
         recordBtn.disabled = true;
+        function getAllThemeEntries() {
+            const entries = THEMES.map((t, i) => ({ type: 'builtin', index: i, label: t.label }));
+            const userPresets = getUserPresets();
+            Object.keys(userPresets).forEach(name => {
+                entries.push({ type: 'user', name, label: name });
+            });
+            return entries;
+        }
+
+        let quickThemeIdx = 0;
+
         themeBtn.addEventListener('click', () => {
-            applyTheme(S.themeIndex + 1);
+            const entries = getAllThemeEntries();
+            if (entries.length === 0) return;
+            quickThemeIdx = (quickThemeIdx + 1) % entries.length;
+            const entry = entries[quickThemeIdx];
+            if (entry.type === 'builtin') {
+                applyTheme(entry.index);
+            } else {
+                loadNamedPreset(entry.name);
+            }
+            themeBtn.textContent = `Tema: ${entry.label}`;
             savePreset();
         });
 
@@ -2366,6 +2623,219 @@
                 S.audioCtx.close();
             }
         });
+
+        // --- Drag-and-Drop File Transcription ---
+        const dropOverlay = document.getElementById('drop-overlay');
+        const fileStatus = document.getElementById('file-status');
+        const fileStatusIcon = document.getElementById('file-status-icon');
+        const fileStatusText = document.getElementById('file-status-text');
+        const fileStatusPct = document.getElementById('file-status-pct');
+        const fileProgressBar = document.getElementById('file-progress-bar');
+        const fileStatusClose = document.getElementById('file-status-close');
+        const fileStatusCancel = document.getElementById('file-status-cancel');
+        const fileStatusEta = document.getElementById('file-status-eta');
+        const AUDIO_EXTS = new Set(['.mp3', '.wav', '.m4a', '.mp4', '.flac', '.ogg', '.webm']);
+        let dragCounter = 0;
+        let transcribing = false;
+        let progressIv = null;
+        let progressStart = 0;
+        let estimatedDuration = 0;
+
+        // ~20x realtime on Apple Silicon + 3s overhead for model/ffprobe
+        const REALTIME_FACTOR = 20;
+        const OVERHEAD_SECS = 3;
+
+        function isAudioFile(file) {
+            const name = (file.name || '').toLowerCase();
+            return AUDIO_EXTS.has(name.slice(name.lastIndexOf('.')));
+        }
+
+        function fmtTime(secs) {
+            const s = Math.max(0, Math.round(secs));
+            if (s < 60) return s + 's';
+            const m = Math.floor(s / 60);
+            const r = s % 60;
+            return m + 'm ' + r.toString().padStart(2, '0') + 's';
+        }
+
+        function setProgress(pct) {
+            const clamped = Math.min(100, Math.max(0, Math.round(pct)));
+            fileProgressBar.style.width = clamped + '%';
+            fileStatusPct.textContent = clamped + '%';
+        }
+
+        function updateEta() {
+            if (estimatedDuration <= 0) { fileStatusEta.classList.remove('has-data'); return; }
+            const elapsed = (Date.now() - progressStart) / 1000;
+            const estTotal = estimatedDuration / REALTIME_FACTOR + OVERHEAD_SECS;
+            const remaining = Math.max(0, estTotal - elapsed);
+            fileStatusEta.textContent = fmtTime(Math.round(elapsed)) + ' / ~' + fmtTime(Math.round(estTotal)) + '  ·  ETA ' + fmtTime(Math.round(remaining));
+            fileStatusEta.classList.add('has-data');
+        }
+
+        function startProgressTimer() {
+            stopProgressTimer();
+            progressStart = Date.now();
+            progressIv = setInterval(() => {
+                if (estimatedDuration <= 0) return;
+                const elapsed = (Date.now() - progressStart) / 1000;
+                const estTotal = estimatedDuration / REALTIME_FACTOR + OVERHEAD_SECS;
+                const raw = elapsed / estTotal;
+                const pct = 95 * (1 - Math.exp(-2.5 * raw));
+                setProgress(pct);
+                updateEta();
+            }, 200);
+        }
+
+        function stopProgressTimer() {
+            if (progressIv) { clearInterval(progressIv); progressIv = null; }
+            fileStatusEta.classList.remove('has-data');
+        }
+
+        function showFileStatus(kind, text) {
+            fileStatus.classList.remove('success', 'error');
+            fileStatusCancel.style.display = 'none';
+            if (kind === 'transcribing') {
+                fileStatusIcon.innerHTML = '<div class="status-spinner"></div>';
+                fileStatusClose.style.display = 'none';
+                fileStatusCancel.style.display = '';
+                fileStatusPct.style.display = '';
+                setProgress(0);
+            } else if (kind === 'success') {
+                fileStatusIcon.innerHTML = '<span class="status-icon"><svg viewBox="0 0 24 24" stroke="rgba(175,238,190,0.9)"><polyline points="20 6 9 17 4 12"/></svg></span>';
+                fileStatus.classList.add('success');
+                fileStatusClose.style.display = '';
+                fileStatusPct.style.display = 'none';
+                stopProgressTimer();
+                setProgress(100);
+            } else {
+                fileStatusIcon.innerHTML = '<span class="status-icon"><svg viewBox="0 0 24 24" stroke="rgba(255,99,99,0.9)"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span>';
+                fileStatus.classList.add('error');
+                fileStatusClose.style.display = '';
+                fileStatusPct.style.display = 'none';
+                stopProgressTimer();
+                fileProgressBar.style.width = '0%';
+            }
+            fileStatusText.textContent = text;
+            fileStatus.classList.add('visible');
+        }
+
+        function hideFileStatus() {
+            fileStatus.classList.remove('visible');
+            stopProgressTimer();
+        }
+
+        fileStatusClose.addEventListener('click', hideFileStatus);
+
+        fileStatusCancel.addEventListener('click', async () => {
+            await window.electronAPI.cancelTranscription();
+        });
+
+        window.electronAPI.onTranscribeProgress((data) => {
+            if (data.phase === 'started') {
+                estimatedDuration = data.durationSecs || 0;
+                startProgressTimer();
+            } else if (data.phase === 'done') {
+                stopProgressTimer();
+                setProgress(100);
+            } else if (data.phase === 'cancelled') {
+                stopProgressTimer();
+                transcribing = false;
+                showFileStatus('error', 'Transcripción cancelada');
+            } else if (data.phase === 'error') {
+                stopProgressTimer();
+            }
+        });
+
+        document.addEventListener('dragenter', (e) => {
+            e.preventDefault();
+            dragCounter++;
+            if (dragCounter === 1 && !transcribing) {
+                dropOverlay.classList.add('active');
+            }
+        });
+
+        document.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'copy';
+        });
+
+        document.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            dragCounter--;
+            if (dragCounter <= 0) {
+                dragCounter = 0;
+                dropOverlay.classList.remove('active');
+            }
+        });
+
+        document.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            dragCounter = 0;
+            dropOverlay.classList.remove('active');
+
+            if (transcribing) {
+                showToast('Ya hay una transcripción en curso');
+                return;
+            }
+
+            const files = Array.from(e.dataTransfer.files).filter(isAudioFile);
+            if (files.length === 0) {
+                showToast('Formato no soportado. Usa: mp3, wav, m4a, mp4, flac, ogg, webm');
+                return;
+            }
+
+            const file = files[0];
+            const filePath = window.electronAPI.getPathForFile(file);
+            if (!filePath) {
+                showToast('No se pudo obtener la ruta del archivo');
+                return;
+            }
+
+            transcribing = true;
+            const fileName = filePath.split('/').pop();
+            showFileStatus('transcribing', `Transcribiendo ${fileName}...`);
+
+            try {
+                const result = await window.electronAPI.transcribeFile(filePath);
+                if (result.success) {
+                    showFileStatus('success', `Guardado: ${result.outputPath}`);
+                } else if (result.error === 'cancelled') {
+                    // Ya manejado por onTranscribeProgress
+                    return;
+                } else {
+                    showFileStatus('error', result.error || 'Error en la transcripción');
+                }
+            } catch (err) {
+                showFileStatus('error', err.message || 'Error inesperado');
+            } finally {
+                transcribing = false;
+            }
+        });
+
+        // --- Programmatic window dragging (bypass app-region CSS issues) ---
+        (function initWindowDrag() {
+            const NO_DRAG = 'button, select, input, label, summary, a, .panel-content, .preset-item, .palette-swatch, .bg-type-btn, .color-row, .control-row, #toast, #file-status, #controls, #drop-overlay, #visual-panel, #open-panel-btn';
+            let dragging = false;
+
+            document.addEventListener('mousedown', (e) => {
+                if (e.button !== 0) return;
+                if (e.target.closest(NO_DRAG)) return;
+                dragging = true;
+                window.electronAPI.windowStartDrag();
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (!dragging) return;
+                window.electronAPI.windowDrag(e.screenX, e.screenY);
+            });
+
+            document.addEventListener('mouseup', () => {
+                if (!dragging) return;
+                dragging = false;
+                window.electronAPI.windowEndDrag();
+            });
+        })();
     </script>
 </body>
 </html>
